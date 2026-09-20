@@ -576,6 +576,9 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
     </table>
     <div class="hint" id="inspHint" style="padding:0 18px 14px">Ghost = source outline · ink = with current transforms. Navigate with ← → · close with Esc.</div>
     <div class="edit-tools" id="editTools" hidden>
+      <button class="btn" id="etUndo" title="Undo (Ctrl+Z)">↩</button>
+      <button class="btn" id="etRedo" title="Redo (Ctrl+Shift+Z)">↪</button>
+      <span class="et-sep"></span>
       <button class="btn" id="etFit" title="Fit glyph in view">FIT</button>
       <button class="btn" id="etZoomIn" title="Zoom in">＋</button>
       <button class="btn" id="etZoomOut" title="Zoom out">－</button>
@@ -1419,7 +1422,17 @@ function renderGridWindow(force){
     } else {
       ctx.fillStyle = '#121316';
       const res = glyphResult(item.g, item.i);
-      drawResult(ctx, res, cx + (cellW-adv)/2, baseY, gScale);
+      const rb = resultBounds(res);
+      const aw = cellW-10, ah = cellH-20-8;
+      const s2 = rb ? shrinkToFit(rb.x2-rb.x1, rb.y2-rb.y1, aw, ah, gScale) : gScale;
+      if (rb && s2 < gScale){
+        /* oversized: shrink proportionally and center its ink in the cell */
+        const offX = cx + (cellW-(rb.x2-rb.x1)*s2)/2 - rb.x1*s2;
+        const topY = cy + ((cellH-20)-(rb.y2-rb.y1)*s2)/2;
+        drawResult(ctx, res, offX, topY + rb.y2*s2, s2);
+      } else {
+        drawResult(ctx, res, cx + (cellW-adv)/2, baseY, gScale);
+      }
     }
 
     /* label strip */
@@ -1448,9 +1461,13 @@ function renderAll(){
 /* ============ glyph inspector ============ */
 function openInspector(listIdx){
   if (listIdx<0 || listIdx>=gridGlyphs.length) return;
+  const switched = state.inspIdx !== listIdx;
   state.inspIdx = listIdx;
   state.selected = gridGlyphs[listIdx].i;
   $('inspector').hidden = false;
+  $('editTools').hidden = false;
+  $('etAll').hidden = !state.editMode; $('etNone').hidden = !state.editMode;
+  if (switched) fitViewFor(gridGlyphs[listIdx].i);
   renderInspector();
   renderGridWindow(true);
 }
@@ -1473,47 +1490,26 @@ function renderInspector(){
   const g = item.g, m = state.metrics;
   $('inspTitle').textContent = (item.ch && item.ch.trim() ? item.ch + '  \u00b7  ' : '') + item.name;
 
-  /* canvas: guides + ghost source + transformed ink */
+  /* canvas: SHARED view mapping (same zoom/pan as Edit Points) */
   const canvas = $('inspCanvas');
   const cssW = canvas.parentElement.clientWidth || 520;
   const cssH = 300;
   const ctx = setupCanvas(canvas, cssW, cssH);
   ctx.clearRect(0,0,cssW,cssH);
 
-  const scl = Math.min((cssH*0.62)/(m.asc - m.desc), (cssW*0.7)/Math.max(g.advanceWidth||1, m.upem*0.4));
-  const baseY = cssH*0.72;
   const adv = transformedAdvance(g, item.i);
-  const offX = (cssW - adv*scl)/2;
-
-  /* guides */
-  ctx.strokeStyle = '#2B3FE0'; ctx.fillStyle = '#2B3FE0';
-  ctx.font = '500 8px "Azeret Mono", monospace';
-  for (const [label, units] of [['ASC',m.asc],['CAP',m.cap],['X',m.xh],['BASE',0],['DESC',m.desc]]){
-    const y = baseY - units*scl;
-    ctx.globalAlpha = units===0 ? .9 : .4;
-    ctx.setLineDash(units===0 ? [] : [2,4]);
-    ctx.beginPath(); ctx.moveTo(0,y+.5); ctx.lineTo(cssW,y+.5); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = .95;
-    ctx.fillText(label, 4, y-3);
-  }
-  /* advance markers */
-  ctx.globalAlpha = .55;
-  ctx.setLineDash([3,3]);
-  ctx.beginPath(); ctx.moveTo(offX+.5, 10); ctx.lineTo(offX+.5, cssH-6); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(offX+adv*scl+.5, 10); ctx.lineTo(offX+adv*scl+.5, cssH-6); ctx.stroke();
-  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  drawMetricGuides(ctx, cssW, cssH, adv);
 
   const emptyNow = itemEmpty(item);
   if (!emptyNow){
-    const sh = slantPadLeft(g, item.i)*scl;
-    /* ghost: untouched source outline */
+    const sh = slantPadLeft(g, item.i)*ed.view.z;
+    /* ghost: untouched source outline (dx/dy overrides show as a shift vs ink) */
     ctx.fillStyle = 'rgba(18,19,22,.14)';
-    drawGlyphPath(ctx, g.path, offX + sh, baseY, scl);
-    /* ink: transformed result */
+    drawGlyphPath(ctx, g.path, ed.view.ox + sh, ed.view.oy, ed.view.z);
+    /* ink: full transformed result */
     ctx.fillStyle = '#121316';
     const res = glyphResult(g, item.i);
-    drawResult(ctx, res, offX + sh, baseY, scl);
+    drawResult(ctx, res, ed.view.ox + sh, ed.view.oy, ed.view.z);
   }
   /* populate override editors */
   const ov = ovOf(item.i) || {};
@@ -2204,6 +2200,48 @@ function removePoint(cmds, ci, key){
   return true;
 }
 
+/* shrink an s-scaled (bw×bh) drawing to fit (aw×ah); returns final scale */
+function shrinkToFit(bw, bh, aw, ah, s){
+  const w = bw*s, h = bh*s;
+  if (w<=aw && h<=ah) return s;
+  return s * Math.min(aw/Math.max(w,1e-6), ah/Math.max(h,1e-6));
+}
+/* bbox of a glyphResult in final font space (null when empty) */
+function resultBounds(res){
+  if (res.polys){
+    if (!res.polys.length) return null;
+    return GWGeo.polysBounds([res.polys]);
+  }
+  if (!res.path || !res.path.commands.length) return null;
+  const b = res.path.getBoundingBox();
+  return {x1:b.x1, y1:b.y1, x2:b.x2, y2:b.y2};
+}
+/* bbox over the SELECTED points themselves (source space) */
+function selBounds(cmds, sel){
+  let x1=1e12,y1=1e12,x2=-1e12,y2=-1e12,n=0;
+  for (const s of sel){
+    const c = cmds[s.ci]; if (!c) continue;
+    const px = s.key==='c1'?c.x1: s.key==='c2'?c.x2: c.x;
+    const py = s.key==='c1'?c.y1: s.key==='c2'?c.y2: c.y;
+    if (px===undefined) continue;
+    x1=Math.min(x1,px); y1=Math.min(y1,py); x2=Math.max(x2,px); y2=Math.max(y2,py); n++;
+  }
+  return n ? {x1,y1,x2,y2} : null;
+}
+/* scale every coordinate slot of the selection about (ox,oy) — absolute factors */
+function scaleSelected(cmds, sel, ox, oy, sx, sy){
+  const slots = new Set();
+  for (const s of sel) for (const slot of pointSlots(cmds, s.ci, s.key)) slots.add(slot);
+  if (!slots.size) return false;
+  for (const slot of slots){
+    const [ciS, xf] = slot.split(':');
+    const ci = +ciS, yf = xf.replace('x','y');
+    cmds[ci][xf] = Math.round((ox + (cmds[ci][xf]-ox)*sx)*10)/10;
+    cmds[ci][yf] = Math.round((oy + (cmds[ci][yf]-oy)*sy)*10)/10;
+  }
+  return true;
+}
+
 /* ---------------- node editor: view + interaction ---------------- */
 const ed = {gi:-1, cmds:null, view:{z:0.2, ox:60, oy:380}, sel:null,
             selPts:new Set(), marquee:null,
@@ -2232,8 +2270,9 @@ function enterEdit(){
   state.editMode = true;
   document.querySelector('.insp-panel').classList.add('editing');
   $('editBtn').textContent = 'DONE';
-  $('inspHint').hidden = true; $('editHint').hidden = false; $('editTools').hidden = false;
-  edFitView();
+  $('inspHint').hidden = true; $('editHint').hidden = false;
+  $('etAll').hidden = false; $('etNone').hidden = false;
+  $('inspPrev').disabled = true; $('inspNext').disabled = true;
   renderEditor();
 }
 function exitEdit(){
@@ -2246,43 +2285,16 @@ function exitEdit(){
   }
   document.querySelector('.insp-panel').classList.remove('editing');
   $('editBtn').textContent = 'EDIT POINTS';
-  $('inspHint').hidden = false; $('editHint').hidden = true; $('editTools').hidden = true;
+  $('inspHint').hidden = false; $('editHint').hidden = true;
+  $('etAll').hidden = true; $('etNone').hidden = true;
+  $('inspPrev').disabled = false; $('inspNext').disabled = false;
   if (ed.dirty){ gridDrawnKey=''; pushHistory(); scheduleRender(); }
   ed.gi = -1; ed.cmds = null; ed.sel = null; ed.selPts = new Set(); ed.marquee = null;
   renderInspector();
 }
-function edFitView(){
-  const canvas = $('inspCanvas');
-  const cssW = canvas.parentElement.clientWidth || 900, cssH = 480;
+/* metric guides + advance markers in the shared view mapping (both panels) */
+function drawMetricGuides(ctx, cssW, cssH, adv){
   const m = state.metrics;
-  const b = (function(){
-    const p = pathFromCommands(ed.cmds);
-    const bb = p.getBoundingBox();
-    return {x1:Math.min(bb.x1,0), y1:Math.min(bb.y1,m.desc), x2:Math.max(bb.x2, edAdv()), y2:Math.max(bb.y2,m.cap)};
-  })();
-  const z = Math.min((cssW-100)/Math.max(b.x2-b.x1,1), (cssH-80)/Math.max(b.y2-b.y1,1));
-  ed.view.z = z;
-  ed.view.ox = (cssW - (b.x2-b.x1)*z)/2 - b.x1*z;
-  ed.view.oy = cssH - ((cssH - (b.y2-b.y1)*z)/2 - b.y1*z);
-}
-function edAdv(){
-  const ov = ovOf(ed.gi);
-  const g = glyphAt(ed.gi);
-  return (ov && ov.adv!=null) ? ov.adv : (g.advanceWidth||0);
-}
-const edSX = fx => ed.view.ox + fx*ed.view.z;
-const edSY = fy => ed.view.oy - fy*ed.view.z;
-const edFX = sx => (sx - ed.view.ox)/ed.view.z;
-const edFY = sy => (ed.view.oy - sy)/ed.view.z;
-
-function renderEditor(){
-  const canvas = $('inspCanvas');
-  const cssW = canvas.parentElement.clientWidth || 900, cssH = 480;
-  const ctx = setupCanvas(canvas, cssW, cssH);
-  ctx.clearRect(0,0,cssW,cssH);
-  const m = state.metrics, z = ed.view.z;
-
-  /* guides */
   ctx.font = '500 8px "Azeret Mono", monospace';
   ctx.strokeStyle = '#2B3FE0'; ctx.fillStyle = '#2B3FE0';
   for (const [label, u] of [['ASC',m.asc],['CAP',m.cap],['X',m.xh],['BASE',0],['DESC',m.desc]]){
@@ -2293,25 +2305,76 @@ function renderEditor(){
     ctx.setLineDash([]); ctx.globalAlpha=.9; ctx.fillText(label, 4, y-3);
   }
   ctx.globalAlpha=.5; ctx.setLineDash([3,3]);
-  for (const u of [0, edAdv()]){
+  for (const u of [0, adv]){
     const x = edSX(u);
+    if (x<-10||x>cssW+10) continue;
     ctx.beginPath(); ctx.moveTo(x+.5,0); ctx.lineTo(x+.5,cssH); ctx.stroke();
   }
   ctx.setLineDash([]); ctx.globalAlpha=1;
+}
+/* fit the CURRENT inspector glyph (final result ∪ metrics) into the canvas */
+function fitViewFor(gi){
+  const canvas = $('inspCanvas');
+  const cssW = canvas.parentElement.clientWidth || 900;
+  const cssH = state.editMode ? 480 : 300;
+  const m = state.metrics;
+  const g = glyphAt(gi);
+  const adv = transformedAdvance(g, gi);
+  let b = {x1:0, y1:m.desc, x2:Math.max(adv, m.upem*0.4), y2:Math.max(m.cap, m.asc*0.9)};
+  const rb = resultBounds(glyphResult(g, gi));
+  if (rb){
+    b = {x1:Math.min(b.x1,rb.x1), y1:Math.min(b.y1,rb.y1),
+         x2:Math.max(b.x2,rb.x2), y2:Math.max(b.y2,rb.y2)};
+  }
+  const z = Math.min((cssW-100)/Math.max(b.x2-b.x1,1), (cssH-70)/Math.max(b.y2-b.y1,1));
+  ed.view.z = z;
+  ed.view.ox = (cssW - (b.x2-b.x1)*z)/2 - b.x1*z;
+  ed.view.oy = cssH - ((cssH - (b.y2-b.y1)*z)/2 - b.y1*z);
+}
+function edFitView(){ fitViewFor(ed.gi>=0 ? ed.gi : gridGlyphs[state.inspIdx].i); }
+function edAdv(){
+  const ov = ovOf(ed.gi);
+  const g = glyphAt(ed.gi);
+  return (ov && ov.adv!=null) ? ov.adv : (g.advanceWidth||0);
+}
+const edSX = fx => ed.view.ox + fx*ed.view.z;
+const edSY = fy => ed.view.oy - fy*ed.view.z;
+const edFX = sx => (sx - ed.view.ox)/ed.view.z;
+const edFY = sy => (ed.view.oy - sy)/ed.view.z;
 
-  /* filled shape, faint */
+/* editor display offset = the glyph's ΔX/ΔY overrides, so the ink sits
+   truthfully against the advance/metric guides while edits stay in source space */
+function eOX(){ const o=ovOf(ed.gi); return (o&&o.dx)||0; }
+function eOY(){ const o=ovOf(ed.gi); return (o&&o.dy)||0; }
+const eSX = fx => edSX(fx + eOX());
+const eSY = fy => edSY(fy + eOY());
+
+function renderEditor(){
+  const canvas = $('inspCanvas');
+  const cssW = canvas.parentElement.clientWidth || 900, cssH = 480;
+  const ctx = setupCanvas(canvas, cssW, cssH);
+  ctx.clearRect(0,0,cssW,cssH);
+  const z = ed.view.z;
+
+  drawMetricGuides(ctx, cssW, cssH, edAdv());
+
+  /* ghost of the FINAL result (global transforms + shape) beneath the edit space */
+  ctx.fillStyle = 'rgba(43,63,224,.08)';
+  drawResult(ctx, glyphResult(glyphAt(ed.gi), ed.gi), ed.view.ox, ed.view.oy, z);
+
+  /* filled edit shape, faint */
   const p = pathFromCommands(ed.cmds);
   ctx.fillStyle = 'rgba(18,19,22,.09)';
-  drawGlyphPath(ctx, p, ed.view.ox, ed.view.oy, z);
+  drawGlyphPath(ctx, p, ed.view.ox + eOX()*z, ed.view.oy - eOY()*z, z);
   /* contour stroke */
   ctx.strokeStyle = '#121316'; ctx.lineWidth = 1.25;
   ctx.beginPath();
   for (const c of p.commands){
     switch(c.type){
-      case 'M': ctx.moveTo(edSX(c.x), edSY(c.y)); break;
-      case 'L': ctx.lineTo(edSX(c.x), edSY(c.y)); break;
-      case 'Q': ctx.quadraticCurveTo(edSX(c.x1),edSY(c.y1),edSX(c.x),edSY(c.y)); break;
-      case 'C': ctx.bezierCurveTo(edSX(c.x1),edSY(c.y1),edSX(c.x2),edSY(c.y2),edSX(c.x),edSY(c.y)); break;
+      case 'M': ctx.moveTo(eSX(c.x), eSY(c.y)); break;
+      case 'L': ctx.lineTo(eSX(c.x), eSY(c.y)); break;
+      case 'Q': ctx.quadraticCurveTo(eSX(c.x1),eSY(c.y1),eSX(c.x),eSY(c.y)); break;
+      case 'C': ctx.bezierCurveTo(eSX(c.x1),eSY(c.y1),eSX(c.x2),eSY(c.y2),eSX(c.x),eSY(c.y)); break;
       case 'Z': ctx.closePath(); break;
     }
   }
@@ -2324,18 +2387,33 @@ function renderEditor(){
     const c = ed.cmds[ci];
     if (c.type==='Z') continue;
     if (c.type==='Q'){
-      ctx.beginPath(); ctx.moveTo(edSX(prev[0]),edSY(prev[1])); ctx.lineTo(edSX(c.x1),edSY(c.y1)); ctx.lineTo(edSX(c.x),edSY(c.y)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(eSX(prev[0]),eSY(prev[1])); ctx.lineTo(eSX(c.x1),eSY(c.y1)); ctx.lineTo(eSX(c.x),eSY(c.y)); ctx.stroke();
     } else if (c.type==='C'){
-      ctx.beginPath(); ctx.moveTo(edSX(prev[0]),edSY(prev[1])); ctx.lineTo(edSX(c.x1),edSY(c.y1)); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(edSX(c.x),edSY(c.y)); ctx.lineTo(edSX(c.x2),edSY(c.y2)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(eSX(prev[0]),eSY(prev[1])); ctx.lineTo(eSX(c.x1),eSY(c.y1)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(eSX(c.x),eSY(c.y)); ctx.lineTo(eSX(c.x2),eSY(c.y2)); ctx.stroke();
     }
     if (c.x!==undefined) prev=[c.x,c.y];
   }
   ctx.globalAlpha = 1;
 
+  /* transform box for multi-selections */
+  if (ed.selPts.size >= 2 && !ed.marquee){
+    const sb = selBounds(ed.cmds, edSelArr());
+    if (sb){
+      const X0=eSX(sb.x1), X1=eSX(sb.x2), Y0=eSY(sb.y2), Y1=eSY(sb.y1);
+      ctx.strokeStyle = '#2B3FE0'; ctx.lineWidth = 1;
+      ctx.strokeRect(X0+.5, Y0+.5, X1-X0, Y1-Y0);
+      ctx.fillStyle = '#F2F1EC';
+      for (const hd of edBoxHandles(sb)){
+        ctx.fillRect(hd.sx-3.5, hd.sy-3.5, 7, 7);
+        ctx.strokeRect(hd.sx-3.5, hd.sy-3.5, 7, 7);
+      }
+    }
+  }
+
   /* points */
   for (const h of editHandles(ed.cmds)){
-    const x = edSX(h.x), y = edSY(h.y);
+    const x = eSX(h.x), y = eSY(h.y);
     const isSel = ed.selPts.has(edKey(h.ci, h.key));
     if (h.onCurve){
       ctx.fillStyle = isSel ? '#2B3FE0' : '#121316';
@@ -2361,7 +2439,12 @@ function renderEditor(){
   /* HUD */
   ctx.fillStyle = '#75736B'; ctx.font = '500 9px "Azeret Mono", monospace';
   let hud = Math.round(z*100)+'% \u00b7 ADV '+edAdv();
-  if (ed.selPts.size>1) hud += ' \u00b7 '+ed.selPts.size+' selected';
+  if (ed.flash && Date.now()<ed.flash.until) hud = ed.flash.t+'  '+hud;
+  if (ed.selPts.size>1){
+    hud += ' \u00b7 '+ed.selPts.size+' selected';
+    const sb = selBounds(ed.cmds, edSelArr());
+    if (sb) hud += ' \u00b7 '+Math.round(sb.x2-sb.x1)+'\u00d7'+Math.round(sb.y2-sb.y1);
+  }
   else if (ed.sel && ed.cmds[ed.sel.ci]){
     const c = ed.cmds[ed.sel.ci];
     const px = ed.sel.key==='c1'?c.x1: ed.sel.key==='c2'?c.x2: c.x;
@@ -2375,12 +2458,38 @@ function edHitPoint(sx, sy){
   /* 12px grab radius; when an anchor and a handle overlap, the anchor wins */
   let best=null, bs=12;
   for (const h of editHandles(ed.cmds)){
-    const d = Math.hypot(edSX(h.x)-sx, edSY(h.y)-sy);
+    const d = Math.hypot(eSX(h.x)-sx, eSY(h.y)-sy);
     if (d>12) continue;
     const score = d - (h.onCurve ? 3 : 0);
     if (score<bs){ bs=score; best=h; }
   }
   return best;
+}
+/* transform-box handles float 12px OUTSIDE the bbox (screen space) so they
+   never cover the selected points themselves — Illustrator-style */
+function edBoxHandles(sb){
+  const M = 12;
+  const X0=eSX(sb.x1), X1=eSX(sb.x2), Y0=eSY(sb.y2), Y1=eSY(sb.y1);  // Y0=top
+  const mx=(X0+X1)/2, my=(Y0+Y1)/2;
+  return [
+    {id:'tl',fx:sb.x1,fy:sb.y2, sx:X0-M, sy:Y0-M},
+    {id:'t', fx:(sb.x1+sb.x2)/2,fy:sb.y2, sx:mx,  sy:Y0-M},
+    {id:'tr',fx:sb.x2,fy:sb.y2, sx:X1+M, sy:Y0-M},
+    {id:'l', fx:sb.x1,fy:(sb.y1+sb.y2)/2, sx:X0-M, sy:my},
+    {id:'r', fx:sb.x2,fy:(sb.y1+sb.y2)/2, sx:X1+M, sy:my},
+    {id:'bl',fx:sb.x1,fy:sb.y1, sx:X0-M, sy:Y1+M},
+    {id:'b', fx:(sb.x1+sb.x2)/2,fy:sb.y1, sx:mx,  sy:Y1+M},
+    {id:'br',fx:sb.x2,fy:sb.y1, sx:X1+M, sy:Y1+M},
+  ];
+}
+function edHitBoxHandle(sx, sy){
+  if (ed.selPts.size < 2) return null;
+  const sb = selBounds(ed.cmds, edSelArr());
+  if (!sb) return null;
+  for (const hd of edBoxHandles(sb)){
+    if (Math.hypot(hd.sx-sx, hd.sy-sy) <= 10) return {hd, sb};
+  }
+  return null;
 }
 function edHitSegment(sx, sy){
   let best=null, bd=8;
@@ -2396,7 +2505,7 @@ function edHitSegment(sx, sy){
       else if (c.type==='Q'){ x=mt*mt*prev[0]+2*mt*t*c.x1+t*t*c.x; y=mt*mt*prev[1]+2*mt*t*c.y1+t*t*c.y; }
       else { x=mt*mt*mt*prev[0]+3*mt*mt*t*c.x1+3*mt*t*t*c.x2+t*t*t*c.x;
              y=mt*mt*mt*prev[1]+3*mt*mt*t*c.y1+3*mt*t*t*c.y2+t*t*t*c.y; }
-      const d = Math.hypot(edSX(x)-sx, edSY(y)-sy);
+      const d = Math.hypot(eSX(x)-sx, eSY(y)-sy);
       if (d<bd){ bd=d; best={ci, t}; }
     }
     prev=[c.x,c.y];
@@ -2442,7 +2551,7 @@ function applySnapshot(snap){
   virtualGlyphs = (snap.vg||[]).map(v=>makeVirtualGlyph(v.u, v.adv));
   if (state.editMode){
     const ov = state.overrides[ed.gi];
-    if (ov && ov.path && ov.path.length){ ed.cmds = ov.path; ed.sel = null; }
+    if (ov && ov.path && ov.path.length){ ed.cmds = ov.path; ed.sel = null; ed.selPts = new Set(); }
     else exitEdit();
   }
   syncUIFromState();
@@ -2452,11 +2561,17 @@ function applySnapshot(snap){
   scheduleRender();
   scheduleAutosave();
 }
-function undo(){ if (histPtr>0){ histPtr--; applySnapshot(history[histPtr]); updateHistBtns(); } }
-function redo(){ if (histPtr<history.length-1){ histPtr++; applySnapshot(history[histPtr]); updateHistBtns(); } }
+function undo(){ if (histPtr>0){ histPtr--; applySnapshot(history[histPtr]); updateHistBtns(); edFlashStep('\u21a9'); } }
+function redo(){ if (histPtr<history.length-1){ histPtr++; applySnapshot(history[histPtr]); updateHistBtns(); edFlashStep('\u21aa'); } }
+function edFlashStep(t){
+  if (!state.editMode) return;
+  ed.flash = {t, until: Date.now()+700};
+  setTimeout(()=>{ if(state.editMode) renderEditor(); }, 720);
+}
 function updateHistBtns(){
-  $('undoBtn').disabled = !(histPtr>0);
-  $('redoBtn').disabled = !(histPtr<history.length-1);
+  const noU = !(histPtr>0), noR = !(histPtr<history.length-1);
+  $('undoBtn').disabled = noU;  $('redoBtn').disabled = noR;
+  $('etUndo').disabled = noU;   $('etRedo').disabled = noR;
 }
 function syncUIFromState(){
   for (const [key, sid, vid, fmt] of sliders){
@@ -2749,11 +2864,15 @@ function edZoom(f){
   ed.view.z = Math.min(4, Math.max(0.02, ed.view.z*f));
   ed.view.ox = cx - fx*ed.view.z;
   ed.view.oy = cyv + fy*ed.view.z;
-  renderEditor();
+  state.editMode ? renderEditor() : renderInspector();
 }
-$('etFit').addEventListener('click', ()=>{ if(state.editMode){ edFitView(); renderEditor(); } });
-$('etZoomIn').addEventListener('click', ()=>{ if(state.editMode) edZoom(1.3); });
-$('etZoomOut').addEventListener('click', ()=>{ if(state.editMode) edZoom(1/1.3); });
+function insLive(){ return state.font && !$('inspector').hidden && state.inspIdx>=0; }
+function rerenderPanel(){ state.editMode ? renderEditor() : renderInspector(); }
+$('etFit').addEventListener('click', ()=>{ if(insLive()){ edFitView(); rerenderPanel(); } });
+$('etZoomIn').addEventListener('click', ()=>{ if(insLive()) edZoom(1.3); });
+$('etZoomOut').addEventListener('click', ()=>{ if(insLive()) edZoom(1/1.3); });
+$('etUndo').addEventListener('click', undo);
+$('etRedo').addEventListener('click', redo);
 $('etAll').addEventListener('click', ()=>{
   if(!state.editMode) return;
   ed.selPts = new Set(editHandles(ed.cmds).map(h=>edKey(h.ci,h.key)));
@@ -2767,28 +2886,64 @@ $('etNone').addEventListener('click', ()=>{
 (function(){
   const c = $('inspCanvas');
   let panning = null;
+  const inspectorLive = ()=> state.font && !$('inspector').hidden && state.inspIdx>=0;
+  const restoreCmds = (orig)=>{ ed.cmds.length = 0; for (const cc of orig) ed.cmds.push(Object.assign({}, cc)); };
+  const cloneCmds = ()=> ed.cmds.map(cc=>Object.assign({}, cc));
+
   c.addEventListener('pointerdown', e=>{
-    if (!state.editMode) return;
+    if (!inspectorLive()) return;
     const r = c.getBoundingClientRect();
     const sx = e.clientX - r.left, sy = e.clientY - r.top;
+
+    if (!state.editMode){
+      /* VIEW mode: drag pans */
+      panning = {sx, sy, ox:ed.view.ox, oy:ed.view.oy};
+      c.setPointerCapture(e.pointerId);
+      c.style.cursor = 'grabbing';
+      return;
+    }
+
+    /* EDIT mode — a point directly under the cursor always wins;
+       floating box handles are only grabbed on their own ground */
+    const bh = edHitPoint(sx, sy) ? null : edHitBoxHandle(sx, sy);
+    if (bh){
+      /* opposite handle is the scale origin */
+      const {hd, sb} = bh;
+      const mx=(sb.x1+sb.x2)/2, my=(sb.y1+sb.y2)/2;
+      const opp = {tl:[sb.x2,sb.y1], t:[mx,sb.y1], tr:[sb.x1,sb.y1],
+                   l:[sb.x2,my], r:[sb.x1,my],
+                   bl:[sb.x2,sb.y2], b:[mx,sb.y2], br:[sb.x1,sb.y2]}[hd.id];
+      ed.drag = {mode:'scale', hd:hd.id, ox:opp[0], oy:opp[1],
+                 hx0:hd.fx, hy0:hd.fy,
+                 t0x:edFX(sx)-eOX(), t0y:edFY(sy)-eOY(),
+                 orig:cloneCmds(), moved:false};
+      c.setPointerCapture(e.pointerId);
+      return;
+    }
+
     const hit = edHitPoint(sx, sy);
     if (hit){
       const k = edKey(hit.ci, hit.key);
       if (e.shiftKey){
-        /* shift-click on a point: toggle membership, no drag */
-        if (ed.selPts.has(k)) ed.selPts.delete(k); else ed.selPts.add(k);
+        /* shift-press on a point: DEFER — release-in-place toggles,
+           moving becomes an axis-locked drag of the selection */
+        const wasIn = ed.selPts.has(k);
+        if (!wasIn) ed.selPts.add(k);                      // ensure it's in for a possible drag
         ed.sel = {ci:hit.ci, key:hit.key};
+        ed.drag = {mode:'maybe-toggle', key:k, wasIn, sx, sy, orig:cloneCmds(),
+                   startF:[edFX(sx)-eOX(), edFY(sy)-eOY()], moved:false};
+        c.setPointerCapture(e.pointerId);
         renderEditor();
         return;
       }
-      if (!ed.selPts.has(k)){ ed.selPts = new Set([k]); }
+      if (!ed.selPts.has(k)) ed.selPts = new Set([k]);
       ed.sel = {ci:hit.ci, key:hit.key};
-      ed.drag = {sx, sy, moved:false};
+      ed.drag = {mode:'move', sx, sy, orig:cloneCmds(),
+                 startF:[edFX(sx)-eOX(), edFY(sy)-eOY()], moved:false};
       c.setPointerCapture(e.pointerId);
       renderEditor();
     } else if (e.shiftKey){
-      /* shift-drag on empty: marquee select */
-      ed.marquee = {x0:sx, y0:sy, x1:sx, y1:sy, add: true};
+      ed.marquee = {x0:sx, y0:sy, x1:sx, y1:sy};
       c.setPointerCapture(e.pointerId);
       renderEditor();
     } else {
@@ -2798,63 +2953,119 @@ $('etNone').addEventListener('click', ()=>{
       renderEditor();
     }
   });
+
   c.addEventListener('pointermove', e=>{
-    if (!state.editMode) return;
+    if (!inspectorLive()) return;
     const r = c.getBoundingClientRect();
     const sx = e.clientX - r.left, sy = e.clientY - r.top;
+
+    if (panning){
+      ed.view.ox = panning.ox + (sx - panning.sx);
+      ed.view.oy = panning.oy + (sy - panning.sy);
+      state.editMode ? renderEditor() : renderInspector();
+      return;
+    }
+    if (!state.editMode){
+      c.style.cursor = 'grab';
+      return;
+    }
     if (ed.marquee){
       ed.marquee.x1 = sx; ed.marquee.y1 = sy;
       renderEditor();
-    } else if (ed.drag && ed.sel && ed.cmds[ed.sel.ci]){
-      /* drag whole selection; snap the grabbed point, apply its delta to all */
-      const c0 = ed.cmds[ed.sel.ci];
-      const cur = ed.sel.key==='c1' ? [c0.x1,c0.y1] : ed.sel.key==='c2' ? [c0.x2,c0.y2] : [c0.x,c0.y];
-      let [nfx, nfy] = [edFX(sx), edFY(sy)];
-      if (ed.sel.key==='p') [nfx, nfy] = edSnap(nfx, nfy);
-      else { nfx = Math.round(nfx); nfy = Math.round(nfy); }
-      const dx = nfx - cur[0], dy = nfy - cur[1];
-      if (dx!==0 || dy!==0){
-        moveSelected(ed.cmds, edSelArr(), dx, dy);
-        ed.drag.moved = true;
-        ed.dirty = true;
-        renderEditor();
-      }
-    } else if (panning){
-      ed.view.ox = panning.ox + (sx - panning.sx);
-      ed.view.oy = panning.oy + (sy - panning.sy);
-      renderEditor();
-    } else {
-      /* idle hover: show a grab cursor over points */
-      c.style.cursor = edHitPoint(sx, sy) ? 'move' : 'crosshair';
+      return;
     }
+    if (ed.drag && (ed.drag.mode==='move' || ed.drag.mode==='maybe-toggle')){
+      if (ed.drag.mode==='maybe-toggle'){
+        if (Math.hypot(sx-ed.drag.sx, sy-ed.drag.sy) < 4) return;   // still a click
+        ed.drag.mode = 'move';                                      // becomes a drag
+      }
+      /* absolute-from-start: restore original, apply total (snapped, optionally axis-locked) delta */
+      let tfx = edFX(sx)-eOX(), tfy = edFY(sy)-eOY();
+      let dX = tfx - ed.drag.startF[0], dY = tfy - ed.drag.startF[1];
+      if (e.shiftKey){                                              // axis lock, live pivot
+        if (Math.abs(dX) >= Math.abs(dY)) dY = 0; else dX = 0;
+      }
+      /* snap the grabbed point's landing spot in FINAL space */
+      const oc = ed.drag.orig[ed.sel.ci];
+      const oxy = ed.sel.key==='c1' ? [oc.x1,oc.y1] : ed.sel.key==='c2' ? [oc.x2,oc.y2] : [oc.x,oc.y];
+      if (ed.sel.key==='p'){
+        const [snX, snY] = edSnap(oxy[0]+dX+eOX(), oxy[1]+dY+eOY());
+        dX = snX - eOX() - oxy[0]; dY = snY - eOY() - oxy[1];
+        if (e.shiftKey){ if (Math.abs(dX) >= Math.abs(dY)) dY = 0; else dX = 0; }
+      } else { dX = Math.round(dX); dY = Math.round(dY); }
+      restoreCmds(ed.drag.orig);
+      if (dX!==0 || dY!==0) moveSelected(ed.cmds, edSelArr(), dX, dY);
+      ed.drag.moved = ed.drag.moved || dX!==0 || dY!==0;
+      ed.dirty = ed.dirty || ed.drag.moved;
+      renderEditor();
+      return;
+    }
+    if (ed.drag && ed.drag.mode==='scale'){
+      const d = ed.drag;
+      const tfx = edFX(sx)-eOX(), tfy = edFY(sy)-eOY();
+      let sxF = 1, syF = 1;
+      const wide = Math.abs(d.hx0-d.ox) > 1, tall = Math.abs(d.hy0-d.oy) > 1;
+      if (d.hd!=='t' && d.hd!=='b' && wide) sxF = ((d.hx0-d.ox)+(tfx-d.t0x))/(d.hx0-d.ox);
+      if (d.hd!=='l' && d.hd!=='r' && tall) syF = ((d.hy0-d.oy)+(tfy-d.t0y))/(d.hy0-d.oy);
+      if (e.shiftKey && wide && tall && ['tl','tr','bl','br'].includes(d.hd)){
+        const s = Math.abs(sxF) >= Math.abs(syF) ? sxF : syF;   // proportional: dominant axis
+        sxF = s; syF = s;
+      }
+      const clamp = v => Math.abs(v)<0.01 ? (v<0?-0.01:0.01) : v;
+      sxF = clamp(sxF); syF = clamp(syF);
+      restoreCmds(d.orig);
+      scaleSelected(ed.cmds, edSelArr(), d.ox, d.oy, sxF, syF);
+      d.moved = true; ed.dirty = true;
+      renderEditor();
+      return;
+    }
+    /* idle hover */
+    c.style.cursor = (edHitPoint(sx, sy) || edHitBoxHandle(sx,sy)) ? 'move' : 'crosshair';
   });
+
   const endDrag = ()=>{
+    if (!state.editMode){ panning = null; c.style.cursor = 'grab'; return; }
     if (ed.marquee){
       const mq = ed.marquee;
       const X0=Math.min(mq.x0,mq.x1), X1=Math.max(mq.x0,mq.x1);
       const Y0=Math.min(mq.y0,mq.y1), Y1=Math.max(mq.y0,mq.y1);
       for (const h of editHandles(ed.cmds)){
-        const x = edSX(h.x), y = edSY(h.y);
+        const x = eSX(h.x), y = eSY(h.y);
         if (x>=X0 && x<=X1 && y>=Y0 && y<=Y1) ed.selPts.add(edKey(h.ci, h.key));
       }
       ed.marquee = null;
       renderEditor();
     }
-    if (ed.drag && ed.drag.moved){ gridDrawnKey=''; pushHistory(); scheduleRender(); }
+    if (ed.drag){
+      if (ed.drag.mode==='maybe-toggle' && !ed.drag.moved){
+        /* release without moving: it was a shift-toggle after all */
+        if (ed.drag.wasIn) ed.selPts.delete(ed.drag.key);   // was in → toggled out; wasn't → stays in
+        renderEditor();
+      }
+      if (ed.drag.moved){ gridDrawnKey=''; pushHistory(); scheduleRender(); }
+    }
     ed.drag = null; panning = null;
   };
   c.addEventListener('pointerup', endDrag);
   c.addEventListener('pointercancel', endDrag);
+
   c.addEventListener('dblclick', e=>{
-    if (!state.editMode) return;
+    if (!inspectorLive()) return;
+    if (!state.editMode){
+      /* view panel: double-click jumps straight into Edit Points */
+      const item = gridGlyphs[state.inspIdx];
+      if (item && !itemEmpty(item)) enterEdit();
+      return;
+    }
     const r = c.getBoundingClientRect();
     const hit = edHitSegment(e.clientX - r.left, e.clientY - r.top);
     if (hit && insertPoint(ed.cmds, hit.ci, hit.t)){
       ed.sel = null; ed.selPts = new Set(); edMutated(); pushHistory(); toast('Point added');
     }
   });
+
   c.addEventListener('wheel', e=>{
-    if (!state.editMode) return;
+    if (!inspectorLive()) return;
     e.preventDefault();
     const r = c.getBoundingClientRect();
     const sx = e.clientX - r.left, sy = e.clientY - r.top;
@@ -2863,7 +3074,7 @@ $('etNone').addEventListener('click', ()=>{
     ed.view.z = Math.min(4, Math.max(0.02, ed.view.z * f));
     ed.view.ox = sx - fx*ed.view.z;
     ed.view.oy = sy + fy*ed.view.z;
-    renderEditor();
+    state.editMode ? renderEditor() : renderInspector();
   }, {passive:false});
 })();
 
@@ -3095,6 +3306,8 @@ document.addEventListener('keydown', e=>{
       e.preventDefault();
       moveSelected(ed.cmds, edSelArr(), nud[0], nud[1]);
       edMutated();
+      clearTimeout(ed.nudgeTimer);
+      ed.nudgeTimer = setTimeout(()=>{ pushHistory(); gridDrawnKey=''; scheduleRender(); }, 400);
     }
     return;
   }

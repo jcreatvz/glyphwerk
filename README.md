@@ -83,6 +83,10 @@ Every time I wanted a fake-oblique, a stretched wide, or a wave-warped display c
 - **New glyph slots** — `+ GLYPH` in the browser header adds a slot for any character the font doesn't have (type the character or `U+hex`). Paste artwork into it and the export maps it in the cmap — type `★` and get your logo. Imports auto-set the slot's advance width.
 - Custom outlines become the glyph's *source*: global transforms, warps, scope, and per-glyph overrides all stack on top, and everything persists through project files, autosave, and undo.
 
+### Browser & inspector view
+- Oversized glyphs (warps, offsets, big scales, wild edits) **shrink proportionally to fit their cell** in the glyph browser instead of overflowing into neighbours; normal glyphs keep the shared scale for honest size comparison.
+- The inspector's view canvas and the Edit Points canvas now share **one view**: pan by dragging, zoom with the wheel or the toolbar `＋/－`, `FIT` re-frames — in *both* panels, with your zoom carried across entering/exiting edit mode. Switching glyphs re-fits. **Double-click the glyph in the view panel to jump straight into Edit Points.**
+
 ### Alignment in the advance
 - **L / C / R** buttons in the inspector set a glyph flush-left (LSB = 0), centered, or flush-right (RSB = 0) within its advance — written to the ΔX override, so it's undoable, saved in projects, and cleared by RESET.
 - **Align all in scope** (Spacing section) applies the same to every glyph the current Transform scope covers, in one undo step — center all caps, flush all digits.
@@ -96,6 +100,10 @@ Every time I wanted a fake-oblique, a stretched wide, or a wave-warped display c
 - **EDIT POINTS** in the inspector opens any glyph in a full vector editor: on-curve anchors as squares, control handles as circles with handle lines, metric guides, and advance-width markers.
 - **Drag** any point. Anchors carry their attached control handles with them, and coincident contour start/end points move together so closed contours never tear open.
 - **Multi-select** — Shift+click toggles points in and out of the selection, **Shift+drag** on empty space draws a marquee, **Ctrl/Cmd+A** selects everything. Dragging any selected point moves the whole selection (overlapping anchor/handle selections are deduplicated so nothing moves twice); arrows nudge the group; **Del** removes them all. **Esc** clears the selection first, exits the editor on the second press. Plain drag still pans.
+- **Transform box** — any selection of 2+ points grows an Illustrator-style bounding box with 8 handles floating just outside it: corners scale both axes (**Shift = proportional**), edge handles scale one axis, and the opposite handle stays pinned as the origin. The HUD reads out live W×H in font units. Clicking a selected point itself always *moves* — handles never steal the click.
+- **Shift-drag a point = axis lock** — the drag clamps to horizontal or vertical by whichever direction dominates, re-evaluated live so you can pivot mid-drag.
+- **Undo/redo live in the editor** — `↩ ↪` on the editor toolbar (with `Cmd+Z / Cmd+Shift+Z` still working); every drag, scale, insert, and delete is one step, and a burst of arrow-nudges groups into a single step.
+- The editor canvas is **placement-true**: your ΔX/ΔY alignment shows against the real advance guides, and a faint blue ghost of the final transformed result sits beneath the edit outline.
 - **Double-click a segment** to insert a point (curves are split exactly with de Casteljau — the shape doesn't change until you move something). **Del** removes: an anchor deletes its segment; a control handle demotes its curve to a straight line. Contour start points are protected.
 - **Toolbar** — `FIT / ＋ / － / ALL / NONE` buttons for view fitting, zooming, and selection without keyboard shortcuts; hovering a point shows a grab cursor, and anchors take priority over overlapping handles when clicking.
 - **Arrows** nudge the selected point (Shift = ×10), with **snapping** to baseline / x-height / cap / ascender / descender and the advance edges while dragging. **Wheel** zooms at the cursor; drag empty space to pan.
