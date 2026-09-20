@@ -585,6 +585,8 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
       <span class="et-sep"></span>
       <button class="btn" id="etAll" title="Select all points (Ctrl+A)">ALL</button>
       <button class="btn" id="etNone" title="Clear selection (Esc)">NONE</button>
+      <span class="et-sep"></span>
+      <button class="btn" id="etSvg" title="Export this construction view (outline, handles, points, guides) as layered SVG">SVG ⤓</button>
     </div>
     <div class="hint" id="editHint" style="padding:0 18px 14px" hidden><b>drag</b> points · <b>double-click</b> a segment to add a point · <b>Del</b> removes (anchor→gone, handle→line) · <b>arrows</b> nudge (Shift = ×10) · <b>wheel</b> zoom · drag empty space to pan · <b>Esc / DONE</b> exits</div>
   </div>
@@ -1466,7 +1468,7 @@ function openInspector(listIdx){
   state.selected = gridGlyphs[listIdx].i;
   $('inspector').hidden = false;
   $('editTools').hidden = false;
-  $('etAll').hidden = !state.editMode; $('etNone').hidden = !state.editMode;
+  $('etAll').hidden = !state.editMode; $('etNone').hidden = !state.editMode; $('etSvg').hidden = !state.editMode;
   if (switched) fitViewFor(gridGlyphs[listIdx].i);
   renderInspector();
   renderGridWindow(true);
@@ -2271,7 +2273,7 @@ function enterEdit(){
   document.querySelector('.insp-panel').classList.add('editing');
   $('editBtn').textContent = 'DONE';
   $('inspHint').hidden = true; $('editHint').hidden = false;
-  $('etAll').hidden = false; $('etNone').hidden = false;
+  $('etAll').hidden = false; $('etNone').hidden = false; $('etSvg').hidden = false;
   $('inspPrev').disabled = true; $('inspNext').disabled = true;
   renderEditor();
 }
@@ -2286,7 +2288,7 @@ function exitEdit(){
   document.querySelector('.insp-panel').classList.remove('editing');
   $('editBtn').textContent = 'EDIT POINTS';
   $('inspHint').hidden = false; $('editHint').hidden = true;
-  $('etAll').hidden = true; $('etNone').hidden = true;
+  $('etAll').hidden = true; $('etNone').hidden = true; $('etSvg').hidden = true;
   $('inspPrev').disabled = false; $('inspNext').disabled = false;
   if (ed.dirty){ gridDrawnKey=''; pushHistory(); scheduleRender(); }
   ed.gi = -1; ed.cmds = null; ed.sel = null; ed.selPts = new Set(); ed.marquee = null;
@@ -2341,6 +2343,98 @@ const edSX = fx => ed.view.ox + fx*ed.view.z;
 const edSY = fy => ed.view.oy - fy*ed.view.z;
 const edFX = sx => (sx - ed.view.ox)/ed.view.z;
 const edFY = sy => (ed.view.oy - sy)/ed.view.z;
+
+/* ---------------- construction-view SVG export ----------------
+   The edit canvas as vectors: metric guides, faint fill, contour outline,
+   handle lines, on/off-curve points — layered groups, font units, so brand
+   kits can restyle each layer independently. */
+function constructionSVG(){
+  /* WYSIWYG: exported at the CURRENT zoom, in screen pixels, with the exact
+     stroke/point sizes the canvas draws — zoom is the design control. */
+  const m = state.metrics;
+  const cmds = ed.cmds;
+  const k = ed.view.z;                          /* current zoom = export scale */
+  const dx = eOX(), dy = eOY();
+  const adv = edAdv();
+  const p = pathFromCommands(cmds);
+  const bb = cmds.length ? p.getBoundingBox() : {x1:0,y1:0,x2:adv,y2:m.cap};
+  const pad = 24;                               /* px */
+  const X1 = Math.min(0, bb.x1+dx)*k - pad,     X2 = Math.max(adv, bb.x2+dx)*k + pad;
+  const Y1 = Math.min(m.desc, bb.y1+dy)*k - pad, Y2 = Math.max(m.asc, bb.y2+dy)*k + pad;
+  const W = X2-X1, H = Y2-Y1;
+  const fx = x => (x+dx)*k - X1;                /* font → export px */
+  const fy = y => Y2 - (y+dy)*k;
+  const gx = x => x*k - X1;                     /* guides: no dx/dy */
+  const gy = y => Y2 - y*k;
+  const N = v => Math.round(v*100)/100;
+  const INK='#121316', BLU='#2B3FE0', PAPER='#F2F1EC';
+  let s = '<svg xmlns="http://www.w3.org/2000/svg" width="'+N(W)+'" height="'+N(H)+'" viewBox="0 0 '+N(W)+' '+N(H)+'">\n';
+
+  /* guides — canvas: 1px, dash 2 4 (metrics) / 3 3 (advance), 8px labels */
+  s += '<g id="guides" stroke="'+BLU+'" stroke-width="1" fill="'+BLU+'" font-family="Azeret Mono, monospace" font-size="8" font-weight="500">\n';
+  for (const [label,u] of [['ASC',m.asc],['CAP',m.cap],['X',m.xh],['BASE',0],['DESC',m.desc]]){
+    const da = u===0 ? '' : ' stroke-dasharray="2 4"';
+    const op = u===0 ? .8 : .35;
+    s += '<line x1="0" y1="'+N(gy(u))+'" x2="'+N(W)+'" y2="'+N(gy(u))+'" opacity="'+op+'"'+da+'/>\n';
+    s += '<text x="4" y="'+N(gy(u)-3)+'" stroke="none" opacity=".9">'+label+'</text>\n';
+  }
+  for (const u of [0, adv])
+    s += '<line x1="'+N(gx(u))+'" y1="0" x2="'+N(gx(u))+'" y2="'+N(H)+'" opacity=".5" stroke-dasharray="3 3"/>\n';
+  s += '</g>\n';
+
+  /* outline path d (display space: + dx/dy) */
+  let d = '';
+  for (const c of cmds){
+    switch(c.type){
+      case 'M': d += 'M'+N(fx(c.x))+' '+N(fy(c.y)); break;
+      case 'L': d += 'L'+N(fx(c.x))+' '+N(fy(c.y)); break;
+      case 'Q': d += 'Q'+N(fx(c.x1))+' '+N(fy(c.y1))+' '+N(fx(c.x))+' '+N(fy(c.y)); break;
+      case 'C': d += 'C'+N(fx(c.x1))+' '+N(fy(c.y1))+' '+N(fx(c.x2))+' '+N(fy(c.y2))+' '+N(fx(c.x))+' '+N(fy(c.y)); break;
+      case 'Z': d += 'Z'; break;
+    }
+  }
+  s += '<g id="fill"><path d="'+d+'" fill="'+INK+'" fill-opacity=".09" fill-rule="nonzero"/></g>\n';
+  s += '<g id="outline"><path d="'+d+'" fill="none" stroke="'+INK+'" stroke-width="1.25"/></g>\n';
+
+  /* handle lines — canvas: 0.75px, .7 opacity */
+  s += '<g id="handle-lines" stroke="'+BLU+'" stroke-width="0.75" opacity=".7">\n';
+  let prev=[0,0];
+  const L = (x1,y1,x2,y2)=> s += '<line x1="'+N(fx(x1))+'" y1="'+N(fy(y1))+'" x2="'+N(fx(x2))+'" y2="'+N(fy(y2))+'"/>\n';
+  for (const c of cmds){
+    if (c.type==='Z') continue;
+    if (c.type==='Q'){ L(prev[0],prev[1],c.x1,c.y1); L(c.x1,c.y1,c.x,c.y); }
+    else if (c.type==='C'){ L(prev[0],prev[1],c.x1,c.y1); L(c.x,c.y,c.x2,c.y2); }
+    if (c.x!==undefined) prev=[c.x,c.y];
+  }
+  s += '</g>\n';
+
+  /* points — canvas: 7px squares, M inner 4px paper stroke, r3.5 circles */
+  s += '<g id="points">\n';
+  for (const h of editHandles(cmds)){
+    const X = fx(h.x), Y = fy(h.y);
+    if (h.onCurve){
+      s += '<rect x="'+N(X-3.5)+'" y="'+N(Y-3.5)+'" width="7" height="7" fill="'+INK+'"/>\n';
+      if (cmds[h.ci].type==='M')
+        s += '<rect x="'+N(X-2)+'" y="'+N(Y-2)+'" width="4" height="4" fill="none" stroke="'+PAPER+'" stroke-width="1"/>\n';
+    } else {
+      s += '<circle cx="'+N(X)+'" cy="'+N(Y)+'" r="3.5" fill="'+PAPER+'" stroke="'+BLU+'" stroke-width="1.25"/>\n';
+    }
+  }
+  s += '</g>\n</svg>';
+  return s;
+}
+function exportConstructionSVG(){
+  if (!state.editMode) return;
+  const svg = constructionSVG();
+  const blob = new Blob([svg], {type:'image/svg+xml'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const g = glyphAt(ed.gi);
+  a.download = sanitizePS((g && g.name) || 'glyph') + '-construction.svg';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Construction SVG exported at '+Math.round(ed.view.z*100)+'% \u2014 zoom sets the size');
+}
 
 /* editor display offset = the glyph's ΔX/ΔY overrides, so the ink sits
    truthfully against the advance/metric guides while edits stay in source space */
@@ -2873,6 +2967,7 @@ $('etZoomIn').addEventListener('click', ()=>{ if(insLive()) edZoom(1.3); });
 $('etZoomOut').addEventListener('click', ()=>{ if(insLive()) edZoom(1/1.3); });
 $('etUndo').addEventListener('click', undo);
 $('etRedo').addEventListener('click', redo);
+$('etSvg').addEventListener('click', exportConstructionSVG);
 $('etAll').addEventListener('click', ()=>{
   if(!state.editMode) return;
   ed.selPts = new Set(editHandles(ed.cmds).map(h=>edKey(h.ci,h.key)));
