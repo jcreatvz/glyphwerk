@@ -185,13 +185,58 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
 .drag-tip b{color:var(--blue);font-weight:500}
 
 .grid-head{
-  display:flex;justify-content:space-between;align-items:baseline;
-  padding:14px 20px 6px;
+  display:flex;justify-content:space-between;align-items:center;gap:14px;
+  padding:14px 20px 10px;flex-wrap:wrap;
 }
-.grid-head h2{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
-.grid-head span{font-family:var(--mono);font-size:10px;color:var(--muted)}
-#glyphgrid{display:block;width:100%}
+.grid-head h2{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.grid-head .text-input{flex:1;min-width:180px;max-width:420px;font-family:var(--mono);font-size:11px}
+.grid-head span{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap}
+#glyphgrid{display:block;position:absolute;top:0;left:0;cursor:pointer}
+#gridViewport{position:relative}
 .grid-wrap{padding:0 20px 40px}
+
+/* ---------- glyph inspector ---------- */
+#inspector{position:fixed;inset:0;z-index:40}
+.insp-backdrop{position:absolute;inset:0;background:rgba(18,19,22,.35)}
+.insp-panel{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:min(560px,94vw);max-height:92vh;overflow:auto;
+  background:var(--paper);border:1px solid var(--ink);border-radius:3px;
+  box-shadow:0 18px 60px rgba(18,19,22,.25);
+}
+.insp-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 18px;border-bottom:1px solid var(--ink);
+  position:sticky;top:0;background:var(--paper);z-index:1;
+}
+.insp-title{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.08em}
+.insp-nav{display:flex;gap:6px}
+.insp-nav .btn{padding:5px 11px}
+#inspCanvas{display:block;width:100%;height:300px}
+.insp-panel.editing{width:min(940px,96vw)}
+.insp-panel.editing #inspCanvas{height:480px;cursor:crosshair;touch-action:none}
+.insp-panel.editing .insp-svg,.insp-panel.editing .insp-meta{display:none}
+.edit-tools{display:flex;gap:6px;align-items:center;padding:10px 18px 0}
+.edit-tools .btn{padding:5px 11px;font-size:10px}
+.et-sep{flex:0 0 1px;height:18px;background:var(--line);margin:0 4px}
+.insp-meta{padding:0 18px;margin:8px 0 10px;width:calc(100% - 36px);margin-left:18px}
+.insp-edit{
+  display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;
+  padding:10px 18px 2px;border-top:1px solid var(--line);
+}
+.ie{display:flex;flex-direction:column;gap:3px;flex:1;min-width:52px}
+.ie label{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;color:var(--muted)}
+.ie input{
+  width:100%;border:1px solid var(--line);background:var(--panel);
+  padding:5px 6px;border-radius:2px;font-family:var(--mono);font-size:11px;
+}
+.ie input:focus{border-color:var(--blue);outline:none}
+.insp-edit .btn{padding:6px 10px;font-size:10px}
+.insp-svg{display:flex;gap:8px;align-items:center;padding:10px 18px 0;flex-wrap:wrap}
+.insp-svg .btn{padding:6px 12px;font-size:10px;white-space:nowrap}
+.insp-svg .seg{flex:1;min-width:110px}
+.insp-panel.svg-over{outline:2px dashed var(--blue);outline-offset:-4px}
+.grid-head .btn{padding:6px 10px;font-size:10px;white-space:nowrap}
 
 /* empty state */
 .empty{
@@ -224,6 +269,8 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
 <header>
   <div class="wordmark">GLYPHWERK<sup>°</sup></div>
   <div class="file-status" id="fileStatus">no font loaded</div>
+  <button class="btn" id="undoBtn" disabled title="Undo (Ctrl+Z)">↩</button>
+  <button class="btn" id="redoBtn" disabled title="Redo (Ctrl+Shift+Z)">↪</button>
   <button class="btn" id="resetAllBtn" disabled>Reset all</button>
   <button class="btn" id="thumbBtn" disabled>Thumbnail</button>
   <button class="btn btn-primary" id="exportBtn" disabled>Export OTF</button>
@@ -253,6 +300,17 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
       <div class="sec-head">
         <span class="sec-title">Transform</span>
         <button class="sec-reset" data-reset="transform">reset</button>
+      </div>
+      <div class="ctl">
+        <div class="ctl-row"><span class="ctl-label">Apply to</span></div>
+        <div class="seg" id="scopeSeg" role="group" aria-label="Transform scope">
+          <button data-scope="all" aria-pressed="true">ALL</button>
+          <button data-scope="upper" aria-pressed="false">A–Z</button>
+          <button data-scope="lower" aria-pressed="false">a–z</button>
+          <button data-scope="digits" aria-pressed="false">0–9</button>
+          <button data-scope="sel" aria-pressed="false">SEL</button>
+        </div>
+        <div class="hint" style="margin-top:6px">Scope gates Transform, Warp &amp; Shape. Out-of-scope glyphs stay untouched. <b>Shift-click</b> grid cells to build a selection for SEL.</div>
       </div>
       <div class="ctl">
         <div class="ctl-row"><span class="ctl-label">Slant / shear X</span><input class="ctl-val" id="v-slant" value="0°"></div>
@@ -343,6 +401,15 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
         <input type="range" id="s-track" min="-1000" max="400" step="5" value="0">
       </div>
       <label class="check"><input type="checkbox" id="slantComp" checked><span>Widen advances to fit slant</span></label>
+      <div class="ctl" style="margin-top:12px">
+        <div class="ctl-row"><span class="ctl-label">Align all in scope</span></div>
+        <div class="seg" id="alignAllSeg" role="group" aria-label="Align all glyphs in scope">
+          <button data-align="left">LEFT</button>
+          <button data-align="center">CENTER</button>
+          <button data-align="right">RIGHT</button>
+        </div>
+        <div class="hint" style="margin-top:6px">Sets each glyph's ΔX so it sits flush or centered in its advance. Respects the Transform scope. One undo step.</div>
+      </div>
     </div>
 
     <div class="section">
@@ -402,6 +469,16 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
       <div class="hint">Written into the exported font's name table — visible in font managers and inspectors.</div>
     </div>
 
+    <div class="section">
+      <div class="sec-head"><span class="sec-title">Project</span></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="projSave" style="flex:1" disabled>Save project</button>
+        <button class="btn" id="projLoad" style="flex:1" disabled>Load project</button>
+      </div>
+      <input type="file" id="projInput" accept=".json" hidden>
+      <div class="hint">Settings, per-glyph edits &amp; selection saved as a <b>.gwproj.json</b> file. Sessions also autosave in this browser per font — reload the same font to restore. The project file references the font; reload the font file yourself.</div>
+    </div>
+
   </aside>
 
   <!-- ================= main ================= -->
@@ -425,14 +502,89 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
       </div>
 
       <div class="grid-head">
-        <h2>Proof sheet</h2>
+        <h2>Glyph browser</h2>
+        <div class="seg" id="modeSeg" role="group" aria-label="Browser mode" style="flex:0 0 auto;min-width:150px">
+          <button data-bmode="glyphs" aria-pressed="true">GLYPHS</button>
+          <button data-bmode="unicode" aria-pressed="false">UNICODE</button>
+        </div>
+        <input class="text-input" id="glyphSearch" placeholder="Filter: character, name, or hex (e.g. A · quote · 0041)" aria-label="Filter glyphs">
+        <select class="text-input" id="uniBlock" aria-label="Unicode block" hidden style="flex:1;min-width:170px;max-width:260px"></select>
+        <input class="text-input" id="uniRange" placeholder="hex range e.g. 2600-27BF" aria-label="Custom hex range" hidden style="flex:1;min-width:140px;max-width:200px">
+        <label class="check" id="ccWrap" hidden><input type="checkbox" id="ccToggle"><span>CLICK-CREATE</span></label>
+        <button class="btn" id="addGlyphBtn" title="Add a new glyph slot (character or U+hex)">+ GLYPH</button>
         <span id="gridCount"></span>
       </div>
       <div class="grid-wrap">
-        <canvas id="glyphgrid"></canvas>
+        <div id="gridViewport">
+          <canvas id="glyphgrid"></canvas>
+        </div>
       </div>
     </div>
   </main>
+</div>
+
+<!-- ============ glyph inspector ============ -->
+<div id="inspector" hidden>
+  <div class="insp-backdrop"></div>
+  <div class="insp-panel" role="dialog" aria-label="Glyph inspector">
+    <div class="insp-head">
+      <span class="insp-title" id="inspTitle">—</span>
+      <div class="insp-nav">
+        <button class="btn" id="editBtn">EDIT POINTS</button>
+        <button class="btn" id="inspPrev" aria-label="Previous glyph">←</button>
+        <button class="btn" id="inspNext" aria-label="Next glyph">→</button>
+        <button class="btn" id="inspClose" aria-label="Close">✕</button>
+      </div>
+    </div>
+    <canvas id="inspCanvas"></canvas>
+    <div class="insp-edit">
+      <div class="ie"><label for="ov-adv">ADV</label><input id="ov-adv" type="number" step="1" placeholder="—"></div>
+      <div class="ie"><label for="ov-dx">ΔX</label><input id="ov-dx" type="number" step="5" placeholder="0"></div>
+      <div class="ie"><label for="ov-dy">ΔY</label><input id="ov-dy" type="number" step="5" placeholder="0"></div>
+      <div class="ie"><label for="ov-sx">SX %</label><input id="ov-sx" type="number" step="1" placeholder="100"></div>
+      <div class="ie"><label for="ov-sy">SY %</label><input id="ov-sy" type="number" step="1" placeholder="100"></div>
+      <div class="ie"><label for="ov-rot">ROT °</label><input id="ov-rot" type="number" step="1" placeholder="0"></div>
+      <div class="ie" style="flex:0 0 auto"><label>ALIGN</label>
+        <div class="seg" id="alignSeg" role="group" aria-label="Align glyph in advance">
+          <button data-align="left" title="Flush left (LSB = 0)">L</button>
+          <button data-align="center" title="Center in advance">C</button>
+          <button data-align="right" title="Flush right (RSB = 0)">R</button>
+        </div>
+      </div>
+      <button class="btn" id="ovReset" title="Clear this glyph's overrides">RESET</button>
+    </div>
+    <div class="insp-svg">
+      <button class="btn" id="svgPasteBtn">PASTE SVG</button>
+      <div class="seg" id="svgFitSeg" role="group" aria-label="SVG fit height">
+        <button data-fit="cap" aria-pressed="true">CAP</button>
+        <button data-fit="xh" aria-pressed="false">X-H</button>
+        <button data-fit="em" aria-pressed="false">EM</button>
+      </div>
+      <div class="seg" id="svgModeSeg" role="group" aria-label="SVG import mode">
+        <button data-mode="replace" aria-pressed="true">REPLACE</button>
+        <button data-mode="add" aria-pressed="false">ADD</button>
+      </div>
+    </div>
+    <div class="hint" style="padding:4px 18px 0">Paste (button or Ctrl+V) or drop an .svg onto this panel — it becomes this glyph's outline, scaled to the chosen height, sitting on the baseline. Transforms &amp; overrides stack on top. RESET restores the font's own outline.</div>
+    <table class="meta-table insp-meta">
+      <tr><td>NAME</td><td id="iName">—</td></tr>
+      <tr><td>UNICODE</td><td id="iUni">—</td></tr>
+      <tr><td>ADVANCE</td><td id="iAdv">—</td></tr>
+      <tr><td>SIDEBEARINGS L / R</td><td id="iSb">—</td></tr>
+      <tr><td>BBOX</td><td id="iBbox">—</td></tr>
+      <tr><td>CONTOURS</td><td id="iCont">—</td></tr>
+    </table>
+    <div class="hint" id="inspHint" style="padding:0 18px 14px">Ghost = source outline · ink = with current transforms. Navigate with ← → · close with Esc.</div>
+    <div class="edit-tools" id="editTools" hidden>
+      <button class="btn" id="etFit" title="Fit glyph in view">FIT</button>
+      <button class="btn" id="etZoomIn" title="Zoom in">＋</button>
+      <button class="btn" id="etZoomOut" title="Zoom out">－</button>
+      <span class="et-sep"></span>
+      <button class="btn" id="etAll" title="Select all points (Ctrl+A)">ALL</button>
+      <button class="btn" id="etNone" title="Clear selection (Esc)">NONE</button>
+    </div>
+    <div class="hint" id="editHint" style="padding:0 18px 14px" hidden><b>drag</b> points · <b>double-click</b> a segment to add a point · <b>Del</b> removes (anchor→gone, handle→line) · <b>arrows</b> nudge (Shift = ×10) · <b>wheel</b> zoom · drag empty space to pan · <b>Esc / DONE</b> exits</div>
+  </div>
 </div>
 
 <div id="toast" role="status"></div>
@@ -640,7 +792,33 @@ const state = {
   size: 120,
   gOffset: 0, strokeMode: 'off', strokeW: 30,
   koEnable: false, koGap: 30, koPriority: 'later',
+  selected: -1, inspIdx: -1, editMode: false,
+  scope: 'all',
+  overrides: {},          // {glyphIndex: {adv,dx,dy,sx,sy,rot}}
 };
+let selSet = new Set();   // glyph indices for scope 'sel'
+let selVer = 0;           // bumped on selection change (cache key)
+
+function uniOf(g){ return (g.unicodes && g.unicodes.length ? g.unicodes[0] : g.unicode); }
+function scopeIncludes(g, i){
+  switch(state.scope){
+    case 'all': return true;
+    case 'sel': return selSet.has(i);
+    case 'upper': { const u=uniOf(g); if(u==null) return false;
+      const c=String.fromCodePoint(u); return c.toLowerCase()!==c && c.toUpperCase()===c; }
+    case 'lower': { const u=uniOf(g); if(u==null) return false;
+      const c=String.fromCodePoint(u); return c.toUpperCase()!==c && c.toLowerCase()===c; }
+    case 'digits': { const u=uniOf(g); return u!=null && u>=0x30 && u<=0x39; }
+  }
+  return true;
+}
+function ovOf(i){ return state.overrides[i] || null; }
+function setOverride(i, field, val){
+  const ov = state.overrides[i] = state.overrides[i] || {};
+  if (val===null || val===undefined || val==='' || isNaN(val)) delete ov[field];
+  else ov[field] = val;
+  if (!Object.keys(ov).length) delete state.overrides[i];
+}
 
 /* ---------------- helpers ---------------- */
 const rad = d => d * Math.PI / 180;
@@ -661,21 +839,25 @@ let glyphCache = new Map(), cacheKey = '';
 function settingsKey(){
   return [state.origin,state.slant,state.shearY,state.rotate,state.scaleX,state.scaleY,
           state.wave,state.waveF,state.bulge,state.taper,state.rough,
-          state.gOffset,state.strokeMode,state.strokeW].join('|');
+          state.gOffset,state.strokeMode,state.strokeW,
+          state.scope, state.scope==='sel'?selVer:0].join('|');
 }
-/* Final geometry for one glyph.
+/* Final geometry for one glyph (override-aware cache).
    Returns {path} when no boolean geometry needed, else {polys}. */
 function glyphResult(g, index){
   const key = settingsKey();
   if (key !== cacheKey){ glyphCache = new Map(); cacheKey = key; }
-  if (glyphCache.has(index)) return glyphCache.get(index);
+  const ovKey = JSON.stringify(state.overrides[index]||0);
+  const hit = glyphCache.get(index);
+  if (hit && hit.ok === ovKey) return hit.res;
   let res;
-  if (!g.path || !g.path.commands.length){
+  const srcPath = sourcePathOf(g, index);
+  if (!srcPath || !srcPath.commands.length){
     res = {path: new opentype.Path()};
   } else {
-    const T = makeGlyphTransform(g);
-    const path = transformPath(g.path, T);
-    if (isGeometry()){
+    const T = makeGlyphTransform(g, index);
+    const path = transformPath(srcPath, T);
+    if (isGeometry() && scopeIncludes(g, index)){
       const polys = GWGeo.applyGeometry(path, {
         offsetUnits: offsetUnits(),
         strokeMode: state.strokeMode,
@@ -686,7 +868,7 @@ function glyphResult(g, index){
       res = {path};
     }
   }
-  glyphCache.set(index, res);
+  glyphCache.set(index, {ok: ovKey, res});
   return res;
 }
 /* flatten a glyph result to clipper polys regardless of branch (for wordmark) */
@@ -724,30 +906,49 @@ function computeMetrics(font){
 
 /* ---------------- core transform ----------------
    Returns fn(x,y)->[x,y] combining linear + warp for one glyph. */
-function makeGlyphTransform(glyph){
+function makeGlyphTransform(glyph, gi){
   const m = state.metrics;
   const adv = glyph.advanceWidth || m.upem*0.5;
+  const inScope = gi===undefined ? true : scopeIncludes(glyph, gi);
+  const ov = gi===undefined ? null : ovOf(gi);
 
   // origin
   let ox = adv/2, oy = 0;
   if (state.origin==='xmid')   oy = m.xh/2;
   if (state.origin==='center') oy = m.cap/2;
 
-  const sx = state.scaleX/100, sy = state.scaleY/100;
-  const tX = Math.tan(rad(state.slant));
-  const tY = Math.tan(rad(state.shearY));
-  const cr = Math.cos(rad(state.rotate)), sr = Math.sin(rad(state.rotate));
+  // local (per-glyph) ops — always applied, scope-independent
+  const lsx = ov && ov.sx!=null ? ov.sx/100 : 1;
+  const lsy = ov && ov.sy!=null ? ov.sy/100 : 1;
+  const lr  = ov && ov.rot ? rad(ov.rot) : 0;
+  const lcr = Math.cos(lr), lsr = Math.sin(lr);
+  const ldx = ov && ov.dx ? ov.dx : 0;
+  const ldy = ov && ov.dy ? ov.dy : 0;
+  const hasLocal = lsx!==1 || lsy!==1 || lr!==0 || ldx!==0 || ldy!==0;
+
+  const sx = inScope ? state.scaleX/100 : 1;
+  const sy = inScope ? state.scaleY/100 : 1;
+  const tX = inScope ? Math.tan(rad(state.slant)) : 0;
+  const tY = inScope ? Math.tan(rad(state.shearY)) : 0;
+  const gr = inScope ? rad(state.rotate) : 0;
+  const cr = Math.cos(gr), sr = Math.sin(gr);
 
   const waveAmp  = state.wave  / 100 * m.upem * 0.12;
   const bulgeK   = state.bulge / 100 * 0.6;
   const taperK   = state.taper / 100 * 0.8;
   const roughAmp = state.rough / 100 * m.upem * 0.02;
   const waveF    = state.waveF;
-  const nonlin   = isNonLinear();
+  const nonlin   = inScope && isNonLinear();
 
   return function(x, y){
     // to origin
     let px = x - ox, py = y - oy;
+    // local per-glyph ops first
+    if (hasLocal){
+      px *= lsx; py *= lsy;
+      if (lr!==0){ const rx=px*lcr-py*lsr, ry=px*lsr+py*lcr; px=rx; py=ry; }
+      px += ldx; py += ldy;
+    }
     // scale
     px *= sx; py *= sy;
     // shear
@@ -874,20 +1075,37 @@ function transformPath(srcPath, T){
   return out;
 }
 
-/* advance width for a glyph after transform */
-function transformedAdvance(glyph){
-  let adv = (glyph.advanceWidth||0) * state.scaleX/100;
-  if (state.slantComp && state.slant!==0){
+/* advance width for a glyph after transform (per-glyph: overrides + scope) */
+function transformedAdvance(glyph, gi){
+  const ov = gi===undefined ? null : ovOf(gi);
+  const inScope = gi===undefined ? true : scopeIncludes(glyph, gi);
+  const srcAdv = ov && ov.adv!=null ? ov.adv : (glyph.advanceWidth||0);
+  let adv = srcAdv * (inScope ? state.scaleX/100 : 1);
+  if (inScope && state.slantComp && state.slant!==0){
     adv += Math.abs(Math.tan(rad(state.slant))) * state.metrics.xh * 0.5;
   }
   adv += state.track;
   return Math.max(0, Math.round(adv));
 }
-/* left-shift so slant compensation pads both sides */
-function slantPadLeft(){
-  return (state.slantComp && state.slant!==0)
+/* left-shift so slant compensation pads both sides (per glyph) */
+function slantPadLeft(glyph, gi){
+  const inScope = (glyph===undefined || gi===undefined) ? true : scopeIncludes(glyph, gi);
+  return (inScope && state.slantComp && state.slant!==0)
     ? Math.abs(Math.tan(rad(state.slant))) * state.metrics.xh * 0.25
     : 0;
+}
+/* translate an opentype path in place-copy */
+function translatePathX(path, dx){
+  if (!dx) return path;
+  const p = new opentype.Path();
+  for (const c of path.commands){
+    const n = Object.assign({}, c);
+    if (n.x!==undefined) n.x+=dx;
+    if (n.x1!==undefined) n.x1+=dx;
+    if (n.x2!==undefined) n.x2+=dx;
+    p.commands.push(n);
+  }
+  return p;
 }
 
 /* ---------------- rendering ---------------- */
@@ -979,19 +1197,18 @@ function renderSpecimen(){
   /* glyph run */
   const text = $('sampleText').value || 'Hamburgefonstiv';
   ctx.fillStyle = '#121316';
-  const shift = slantPadLeft();
 
   if (state.koEnable){
     /* wordmark mode: lay out, knockout, draw */
     const items = [];
     let x = padL/scale;
     for (const ch of text){
-      const g = state.font.charToGlyph(ch);
-      if (!g) continue;
-      const res = glyphResult(g, g.index);
+      const cg = charGlyph(ch);
+      if (!cg.g) continue;
+      const res = glyphResult(cg.g, cg.i);
       const polys = resultToPolys(res);
-      if (polys.length) items.push({polys: GWGeo.translate(polys, x + shift, 0)});
-      x += transformedAdvance(g)/1; // font units
+      if (polys.length) items.push({polys: GWGeo.translate(polys, x + slantPadLeft(cg.g, cg.i), 0)});
+      x += transformedAdvance(cg.g, cg.i); // font units
       if (x*scale > cssW + 400) break;
     }
     const cut = GWGeo.knockout(items, state.koPriority, koGapUnits());
@@ -999,51 +1216,220 @@ function renderSpecimen(){
   } else {
     let x = padL;
     for (const ch of text){
-      const g = state.font.charToGlyph(ch);
-      if (!g) continue;
-      const res = glyphResult(g, g.index);
-      drawResult(ctx, res, x + shift*scale, baseY, scale);
-      x += transformedAdvance(g)*scale;
+      const cg = charGlyph(ch);
+      if (!cg.g) continue;
+      const res = glyphResult(cg.g, cg.i);
+      drawResult(ctx, res, x + slantPadLeft(cg.g, cg.i)*scale, baseY, scale);
+      x += transformedAdvance(cg.g, cg.i)*scale;
       if (x > cssW + 200) break;
     }
   }
 }
 
-function renderGrid(){
-  const canvas = $('glyphgrid');
-  const wrapW = canvas.parentElement.clientWidth;
-  const m = state.metrics;
+/* ============ glyph browser (virtualized — shows EVERY glyph) ============ */
+let gridGlyphs = [];              // filtered [{g,i,ch,name,hex,empty}]
+let gridLayout = {cols:1,cellW:96,cellH:114,rows:0};
+let gridDrawnKey = '';
 
-  const glyphs = [];
-  const cap = isGeometry() ? 60 : 120;
-  for (let i=0; i<state.font.glyphs.length; i++){
-    const g = state.font.glyphs.get(i);
-    if (g.path && g.path.commands.length) glyphs.push({g, i});
-    if (glyphs.length >= cap) break;
+/* ---------------- unicode block view ---------------- */
+const UNI_BLOCKS = [
+  ['Basic Latin', 0x0020, 0x007E],
+  ['Latin-1 Supplement', 0x00A0, 0x00FF],
+  ['Latin Extended-A', 0x0100, 0x017F],
+  ['Latin Extended-B', 0x0180, 0x024F],
+  ['IPA Extensions', 0x0250, 0x02AF],
+  ['Greek & Coptic', 0x0370, 0x03FF],
+  ['Cyrillic', 0x0400, 0x04FF],
+  ['General Punctuation', 0x2000, 0x206F],
+  ['Superscripts/Subscripts', 0x2070, 0x209F],
+  ['Currency Symbols', 0x20A0, 0x20CF],
+  ['Letterlike Symbols', 0x2100, 0x214F],
+  ['Number Forms', 0x2150, 0x218F],
+  ['Arrows', 0x2190, 0x21FF],
+  ['Mathematical Operators', 0x2200, 0x22FF],
+  ['Misc Technical', 0x2300, 0x23FF],
+  ['Box Drawing', 0x2500, 0x257F],
+  ['Geometric Shapes', 0x25A0, 0x25FF],
+  ['Misc Symbols', 0x2600, 0x26FF],
+  ['Dingbats', 0x2700, 0x27BF],
+  ['Private Use Area (start)', 0xE000, 0xE0FF],
+  ['Custom range\u2026', -1, -1],
+];
+state.browserMode = 'glyphs';
+state.uniBlockIdx = 0;
+state.clickCreate = false;
+function uniRangeBounds(){
+  const blk = UNI_BLOCKS[state.uniBlockIdx];
+  if (blk && blk[1] >= 0) return [blk[1], blk[2]];
+  const m = ($('uniRange').value||'').trim().match(/^(?:u\+?|0x)?([0-9a-f]{1,6})\s*[-\u2013]\s*(?:u\+?|0x)?([0-9a-f]{1,6})$/i);
+  if (!m) return null;
+  let a = parseInt(m[1],16), b = parseInt(m[2],16);
+  if (b < a) [a,b] = [b,a];
+  if (b - a > 4095) b = a + 4095;   // sanity cap
+  return [a, b];
+}
+function buildUnicodeList(){
+  gridGlyphs = [];
+  const R = uniRangeBounds();
+  if (!R){ $('gridCount').textContent = 'enter a hex range like 2600-27BF'; gridDrawnKey=''; return; }
+  const [a,b] = R;
+  let mapped = 0;
+  for (let u=a; u<=b; u++){
+    const ch = String.fromCodePoint(u);
+    const hex = u.toString(16).padStart(4,'0');
+    let vi = -1;
+    for (let k=0;k<virtualGlyphs.length;k++) if (virtualGlyphs[k].u===u){ vi=k; break; }
+    if (vi>=0){
+      const v = virtualGlyphs[vi];
+      gridGlyphs.push({g:v.glyph, i:vBase()+vi, ch, name:v.name, hex, empty:true, virtual:true, u});
+      mapped++;
+    } else {
+      const gidx = state.font.charToGlyphIndex ? state.font.charToGlyphIndex(ch) : 0;
+      if (gidx > 0){
+        const g = state.font.glyphs.get(gidx);
+        gridGlyphs.push({g, i:gidx, ch, name:g.name||('gid'+gidx), hex,
+          empty: !(g.path && g.path.commands.length), u});
+        mapped++;
+      } else {
+        gridGlyphs.push({blank:true, g:null, i:-1, ch, name:'', hex, empty:true, u});
+      }
+    }
   }
-  $('gridCount').textContent = glyphs.length + (state.font.glyphs.length>cap+1?'+':'') + ' drawn glyphs · live';
+  $('gridCount').textContent = 'U+'+a.toString(16).toUpperCase().padStart(4,'0')+
+    '\u2013U+'+b.toString(16).toUpperCase().padStart(4,'0')+' \u00b7 '+
+    gridGlyphs.length+' slots \u00b7 '+mapped+' in font';
+  gridDrawnKey = '';
+}
 
-  const cell = Math.max(64, Math.min(96, Math.floor(wrapW/8)));
-  const cols = Math.max(1, Math.floor(wrapW / cell));
-  const rows = Math.ceil(glyphs.length / cols);
-  const cssH = rows*cell;
-  const ctx = setupCanvas(canvas, wrapW, cssH);
+function buildGlyphList(){
+  if (state.browserMode === 'unicode' && state.font){ buildUnicodeList(); return; }
+  const q = ($('glyphSearch').value||'').trim().toLowerCase();
+  const qHex = q.replace(/^u\+/,'');
+  gridGlyphs = [];
+  const n = state.font.glyphs.length;
+  for (let i=0; i<n; i++){
+    const g = state.font.glyphs.get(i);
+    const name = g.name || ('gid'+i);
+    const uni = (g.unicodes && g.unicodes.length ? g.unicodes[0] : g.unicode);
+    const ch = uni ? String.fromCodePoint(uni) : '';
+    const hex = uni ? uni.toString(16).padStart(4,'0') : '';
+    if (q){
+      const nm = name.toLowerCase();
+      const hit = (ch && ch.toLowerCase()===q) ||
+                  (q.length>1 ? nm.includes(q) : nm===q) ||
+                  (hex && q.length>1 && hex.includes(qHex));
+      if (!hit) continue;
+    }
+    gridGlyphs.push({g, i, ch, name, hex, u: uni, empty: !(g.path && g.path.commands.length)});
+  }
+  for (let k=0; k<virtualGlyphs.length; k++){
+    const v = virtualGlyphs[k];
+    const ch = String.fromCodePoint(v.u);
+    const hex = v.u.toString(16).padStart(4,'0');
+    if (q){
+      const hit = ch.toLowerCase()===q ||
+                  (q.length>1 ? v.name.toLowerCase().includes(q) : v.name.toLowerCase()===q) ||
+                  (q.length>1 && hex.includes(qHex));
+      if (!hit) continue;
+    }
+    gridGlyphs.push({g: v.glyph, i: vBase()+k, ch, name: v.name, hex, u: v.u, empty: true, virtual: true});
+  }
+  const total = state.font.glyphs.length + virtualGlyphs.length;
+  $('gridCount').textContent = q
+    ? gridGlyphs.length + ' / ' + total + ' glyphs \u00b7 filtered'
+    : total + ' glyphs \u00b7 all \u00b7 live';
+  gridDrawnKey = '';
+}
 
-  ctx.clearRect(0,0,wrapW,cssH);
-  ctx.strokeStyle = '#D9D7CE';
-  ctx.lineWidth = 0.5;
+function layoutGrid(){
+  const wrap = $('gridViewport');
+  const wrapW = wrap.clientWidth || 600;
+  const cols = Math.max(2, Math.floor(wrapW / 104));
+  const cellW = Math.floor(wrapW / cols);
+  const cellH = cellW + 20;                       // + label strip
+  const rows = Math.ceil(gridGlyphs.length / cols);
+  gridLayout = {cols, cellW, cellH, rows};
+  wrap.style.height = Math.max(1, rows*cellH) + 'px';
+  gridDrawnKey = '';
+}
 
-  const gScale = (cell*0.52) / m.upem;
-  ctx.fillStyle = '#121316';
+function renderGridWindow(force){
+  if (!state.font || !gridGlyphs) return;
+  const wrap = $('gridViewport');
+  const {cols, cellW, cellH, rows} = gridLayout;
+  const rect = wrap.getBoundingClientRect();
+  const viewH = window.innerHeight || 800;
+  const buffer = 2;
+  let r0 = Math.max(0, Math.floor((-rect.top)/cellH) - buffer);
+  let r1 = Math.min(rows, Math.ceil((viewH - rect.top)/cellH) + buffer);
+  if (r1 <= r0) r1 = Math.min(rows, r0+1);
 
-  glyphs.forEach((item, idx)=>{
-    const cx = (idx%cols)*cell, cy = Math.floor(idx/cols)*cell;
-    ctx.strokeRect(cx+.25, cy+.25, cell-.5, cell-.5);
-    const res = glyphResult(item.g, item.i);
-    const adv = transformedAdvance(item.g)*gScale;
-    const baseY = cy + cell*0.74;
-    drawResult(ctx, res, cx + (cell-adv)/2, baseY, gScale);
-  });
+  const key = [r0,r1,cacheKey,settingsKey(),state.track,state.slantComp,state.selected,gridGlyphs.length].join('~');
+  if (!force && key === gridDrawnKey) return;
+  gridDrawnKey = key;
+
+  const canvas = $('glyphgrid');
+  canvas.style.top = (r0*cellH) + 'px';
+  const cssW = cols*cellW, cssH = Math.max(1,(r1-r0))*cellH;
+  const ctx = setupCanvas(canvas, cssW, cssH);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const m = state.metrics;
+  const gScale = (cellW*0.5) / m.upem;
+  ctx.textAlign = 'left';
+
+  for (let idx = r0*cols; idx < Math.min(gridGlyphs.length, r1*cols); idx++){
+    const item = gridGlyphs[idx];
+    const col = idx % cols, row = Math.floor(idx/cols);
+    const cx = col*cellW, cy = (row - r0)*cellH;
+
+    /* cell frame */
+    ctx.strokeStyle = '#D9D7CE'; ctx.lineWidth = 0.5;
+    ctx.strokeRect(cx+.25, cy+.25, cellW-.5, cellH-.5);
+    if (item.i === state.selected){
+      ctx.strokeStyle = '#2B3FE0'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx+1, cy+1, cellW-2, cellH-2);
+    }
+    if (!item.blank && selSet.has(item.i)){
+      ctx.fillStyle = '#2B3FE0';
+      ctx.beginPath(); ctx.moveTo(cx+1,cy+1); ctx.lineTo(cx+13,cy+1); ctx.lineTo(cx+1,cy+13); ctx.closePath(); ctx.fill();
+    }
+    if (!item.blank && state.overrides[item.i]){
+      ctx.fillStyle = '#2B3FE0';
+      ctx.beginPath(); ctx.arc(cx+cellW-8, cy+8, 2.5, 0, 7); ctx.fill();
+    }
+
+    /* glyph */
+    if (item.blank){
+      /* unassigned codepoint: blank means blank */
+      ctx.fillStyle = '#B9B7AE';
+      ctx.font = '500 8px "Azeret Mono", monospace';
+      ctx.fillText('U+'+item.hex.toUpperCase(), cx+5, cy+cellH-7);
+      continue;
+    }
+    const adv = transformedAdvance(item.g, item.i)*gScale;
+    const baseY = cy + (cellH-20)*0.76;
+    if (itemEmpty(item)){
+      /* empty slot: show advance-width box on baseline */
+      ctx.strokeStyle = '#2B3FE0'; ctx.lineWidth = 0.75;
+      ctx.setLineDash([2,3]);
+      const bw = Math.max(4, adv);
+      ctx.strokeRect(cx+(cellW-bw)/2, baseY - m.xh*gScale, bw, m.xh*gScale);
+      ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle = '#121316';
+      const res = glyphResult(item.g, item.i);
+      drawResult(ctx, res, cx + (cellW-adv)/2, baseY, gScale);
+    }
+
+    /* label strip */
+    ctx.fillStyle = item.virtual ? '#2B3FE0' : '#75736B';
+    ctx.font = '500 8px "Azeret Mono", monospace';
+    const label = (item.hex ? 'U+'+item.hex.toUpperCase() : item.name).slice(0,14);
+    ctx.fillText(label, cx+5, cy+cellH-7);
+    const advTxt = String(transformedAdvance(item.g, item.i));
+    ctx.fillText(advTxt, cx+cellW-5-ctx.measureText(advTxt).width, cy+cellH-7);
+  }
 }
 
 let gridTimer = null;
@@ -1051,12 +1437,116 @@ function renderAll(){
   if (!state.font) return;
   renderSpecimen();
   if (isGeometry()){
-    /* boolean geometry is heavy — debounce the proof sheet */
     clearTimeout(gridTimer);
-    gridTimer = setTimeout(renderGrid, 140);
+    gridTimer = setTimeout(()=>renderGridWindow(true), 140);
   } else {
-    renderGrid();
+    renderGridWindow(true);
   }
+  if (state.inspIdx >= 0 && !$('inspector').hidden) renderInspector();
+}
+
+/* ============ glyph inspector ============ */
+function openInspector(listIdx){
+  if (listIdx<0 || listIdx>=gridGlyphs.length) return;
+  state.inspIdx = listIdx;
+  state.selected = gridGlyphs[listIdx].i;
+  $('inspector').hidden = false;
+  renderInspector();
+  renderGridWindow(true);
+}
+function closeInspector(){
+  if (state.editMode) exitEdit();
+  $('inspector').hidden = true;
+  state.inspIdx = -1;
+  state.selected = -1;
+  renderGridWindow(true);
+}
+function stepInspector(d){
+  if (state.editMode) return;
+  const nx = state.inspIdx + d;
+  if (nx>=0 && nx<gridGlyphs.length) openInspector(nx);
+}
+function renderInspector(){
+  const item = gridGlyphs[state.inspIdx];
+  if (!item) return;
+  if (state.editMode){ renderEditor(); return; }
+  const g = item.g, m = state.metrics;
+  $('inspTitle').textContent = (item.ch && item.ch.trim() ? item.ch + '  \u00b7  ' : '') + item.name;
+
+  /* canvas: guides + ghost source + transformed ink */
+  const canvas = $('inspCanvas');
+  const cssW = canvas.parentElement.clientWidth || 520;
+  const cssH = 300;
+  const ctx = setupCanvas(canvas, cssW, cssH);
+  ctx.clearRect(0,0,cssW,cssH);
+
+  const scl = Math.min((cssH*0.62)/(m.asc - m.desc), (cssW*0.7)/Math.max(g.advanceWidth||1, m.upem*0.4));
+  const baseY = cssH*0.72;
+  const adv = transformedAdvance(g, item.i);
+  const offX = (cssW - adv*scl)/2;
+
+  /* guides */
+  ctx.strokeStyle = '#2B3FE0'; ctx.fillStyle = '#2B3FE0';
+  ctx.font = '500 8px "Azeret Mono", monospace';
+  for (const [label, units] of [['ASC',m.asc],['CAP',m.cap],['X',m.xh],['BASE',0],['DESC',m.desc]]){
+    const y = baseY - units*scl;
+    ctx.globalAlpha = units===0 ? .9 : .4;
+    ctx.setLineDash(units===0 ? [] : [2,4]);
+    ctx.beginPath(); ctx.moveTo(0,y+.5); ctx.lineTo(cssW,y+.5); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = .95;
+    ctx.fillText(label, 4, y-3);
+  }
+  /* advance markers */
+  ctx.globalAlpha = .55;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(offX+.5, 10); ctx.lineTo(offX+.5, cssH-6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(offX+adv*scl+.5, 10); ctx.lineTo(offX+adv*scl+.5, cssH-6); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+
+  const emptyNow = itemEmpty(item);
+  if (!emptyNow){
+    const sh = slantPadLeft(g, item.i)*scl;
+    /* ghost: untouched source outline */
+    ctx.fillStyle = 'rgba(18,19,22,.14)';
+    drawGlyphPath(ctx, g.path, offX + sh, baseY, scl);
+    /* ink: transformed result */
+    ctx.fillStyle = '#121316';
+    const res = glyphResult(g, item.i);
+    drawResult(ctx, res, offX + sh, baseY, scl);
+  }
+  /* populate override editors */
+  const ov = ovOf(item.i) || {};
+  $('ov-adv').value = ov.adv!=null?ov.adv:''; $('ov-adv').placeholder = g.advanceWidth||0;
+  $('ov-dx').value = ov.dx!=null?ov.dx:'';   $('ov-dy').value = ov.dy!=null?ov.dy:'';
+  $('ov-sx').value = ov.sx!=null?ov.sx:'';   $('ov-sy').value = ov.sy!=null?ov.sy:'';
+  $('ov-rot').value = ov.rot!=null?ov.rot:'';
+
+  /* metrics readout: source \u2192 transformed */
+  const srcAdv = g.advanceWidth || 0;
+  const bbT = (function(){
+    if (emptyNow) return null;
+    const res = glyphResult(g, item.i);
+    if (res.polys){ const b = GWGeo.polysBounds([res.polys]); return {x1:b.x1,y1:b.y1,x2:b.x2,y2:b.y2}; }
+    const bb = res.path.getBoundingBox(); return {x1:bb.x1,y1:bb.y1,x2:bb.x2,y2:bb.y2};
+  })();
+  const srcUsed = sourcePathOf(g, item.i);
+  const bbS = emptyNow ? null : (srcUsed && srcUsed.commands.length ? srcUsed.getBoundingBox() : null);
+
+  $('iName').textContent = item.name + '  (gid '+item.i+')';
+  $('iUni').textContent = item.hex ? ('U+'+item.hex.toUpperCase()+'  '+item.ch) : '\u2014 (unmapped)';
+  $('iAdv').textContent = srcAdv + (ov.adv!=null?' (ov '+ov.adv+')':'') + ' \u2192 ' + adv;
+  if (bbT && bbS){
+    const lsbS = Math.round(bbS.x1), rsbS = Math.round(srcAdv - bbS.x2);
+    const lsbT = Math.round(bbT.x1), rsbT = Math.round(adv - bbT.x2);
+    $('iSb').textContent = lsbS+' / '+rsbS+' \u2192 '+lsbT+' / '+rsbT;
+    $('iBbox').textContent = Math.round(bbT.x1)+', '+Math.round(bbT.y1)+' \u2192 '+Math.round(bbT.x2)+', '+Math.round(bbT.y2);
+  } else {
+    $('iSb').textContent = '\u2014'; $('iBbox').textContent = '\u2014 (empty)';
+  }
+  $('iCont').textContent = emptyNow ? '0'
+    : srcUsed.commands.filter(c=>c.type==='M').length + ' contours \u00b7 ' + srcUsed.commands.length + ' commands'
+      + ((ovOf(item.i)||{}).path ? ' \u00b7 custom SVG' : '');
 }
 
 /* ---------------- export ---------------- */
@@ -1074,33 +1564,23 @@ function exportFont(){
   const fam = $('nameFamily').value.trim() || (src.names.fontFamily && src.names.fontFamily.en) || 'Untitled';
   const sty = $('nameStyle').value.trim() || 'Regular';
 
-  const shift = slantPadLeft();
   const outGlyphs = [];
-  for (let i=0; i<src.glyphs.length; i++){
-    const g = src.glyphs.get(i);
+  const totalN = src.glyphs.length + virtualGlyphs.length;
+  for (let i=0; i<totalN; i++){
+    const g = glyphAt(i);
     let path;
-    if (g.path && g.path.commands.length){
-      const T = makeGlyphTransform(g);
-      const shifted = (x,y)=>{ const p=T(x,y); return [p[0]+shift, p[1]]; };
-      const tPath = transformPath(g.path, shifted);
-      if (isGeometry()){
-        const polys = GWGeo.applyGeometry(tPath, {
-          offsetUnits: offsetUnits(),
-          strokeMode: state.strokeMode,
-          strokeUnits: strokeUnits(),
-        }) || [];
-        path = GWGeo.polysToPath(polys);
-      } else {
-        path = tPath;
-      }
+    const res = glyphResult(g, i);
+    const sh = slantPadLeft(g, i);
+    if (res.polys){
+      path = GWGeo.polysToPath(sh ? GWGeo.translate(res.polys, sh, 0) : res.polys);
     } else {
-      path = new opentype.Path();
+      path = translatePathX(res.path, sh);
     }
     outGlyphs.push(new opentype.Glyph({
       name: g.name || ('gid'+i),
       unicode: g.unicode,
       unicodes: g.unicodes ? g.unicodes.slice() : undefined,
-      advanceWidth: transformedAdvance(g),
+      advanceWidth: transformedAdvance(g, i),
       path,
     }));
   }
@@ -1144,16 +1624,15 @@ function exportFont(){
 /* ---------------- wordmark SVG export ---------------- */
 function buildWordmarkPolys(){
   const text = $('sampleText').value || 'Glyphwerk';
-  const shift = slantPadLeft();
   const items = [];
   let x = 0;
   for (const ch of text){
-    const g = state.font.charToGlyph(ch);
-    if (!g) continue;
-    const res = glyphResult(g, g.index);
+    const cg = charGlyph(ch);
+    if (!cg.g) continue;
+    const res = glyphResult(cg.g, cg.i);
     const polys = resultToPolys(res);
-    if (polys.length) items.push({polys: GWGeo.translate(polys, x + shift, 0)});
-    x += transformedAdvance(g);
+    if (polys.length) items.push({polys: GWGeo.translate(polys, x + slantPadLeft(cg.g, cg.i), 0)});
+    x += transformedAdvance(cg.g, cg.i);
   }
   return state.koEnable
     ? GWGeo.knockout(items, state.koPriority, koGapUnits())
@@ -1258,6 +1737,794 @@ function downloadThumbnail(){
 }
 
 
+/* ---------------- SVG import ---------------- */
+/* Parses an SVG string to a flat command list in SVG coords.
+   Supports: path (all commands incl. arcs), rect, circle, ellipse,
+   polygon, polyline, groups, transform attributes (affine). */
+function parseSvg(svgText){
+  let doc;
+  try{ doc = new DOMParser().parseFromString(svgText, 'image/svg+xml'); }
+  catch(e){ throw new Error('SVG parse failed'); }
+  const root = doc && doc.documentElement;
+  if (!root || String(root.nodeName).toLowerCase().indexOf('svg')===-1) throw new Error('not an SVG');
+  const cmds = [];
+  const K = 0.5522847498307936; // circle-to-cubic kappa
+
+  const mul=(a,b)=>[a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1],
+                    a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3],
+                    a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]];
+  const ap=(M,x,y)=>[M[0]*x+M[2]*y+M[4], M[1]*x+M[3]*y+M[5]];
+
+  function parseTransform(str){
+    let M=[1,0,0,1,0,0];
+    const re=/(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
+    let m;
+    while((m=re.exec(str))){
+      const a=m[2].split(/[\s,]+/).filter(Boolean).map(Number);
+      let T=null;
+      switch(m[1]){
+        case 'matrix': T=a; break;
+        case 'translate': T=[1,0,0,1,a[0]||0,a[1]||0]; break;
+        case 'scale': T=[a[0],0,0,a.length>1?a[1]:a[0],0,0]; break;
+        case 'rotate': {
+          const r=a[0]*Math.PI/180, c=Math.cos(r), s=Math.sin(r);
+          T=[c,s,-s,c,0,0];
+          if (a.length>2) T = mul(mul([1,0,0,1,a[1],a[2]], T), [1,0,0,1,-a[1],-a[2]]);
+          break;
+        }
+        case 'skewX': T=[1,0,Math.tan(a[0]*Math.PI/180),1,0,0]; break;
+        case 'skewY': T=[1,Math.tan(a[0]*Math.PI/180),0,1,0,0]; break;
+      }
+      if (T && T.length===6) M = mul(M, T);
+    }
+    return M;
+  }
+
+  function emit(type, M, pts){ // pts: flat [x,y,...] in local coords → transformed
+    const o = {type};
+    if (type==='M'||type==='L'){ const p=ap(M,pts[0],pts[1]); o.x=p[0]; o.y=p[1]; }
+    else if (type==='Q'){ const c=ap(M,pts[0],pts[1]), p=ap(M,pts[2],pts[3]); o.x1=c[0]; o.y1=c[1]; o.x=p[0]; o.y=p[1]; }
+    else if (type==='C'){ const c1=ap(M,pts[0],pts[1]), c2=ap(M,pts[2],pts[3]), p=ap(M,pts[4],pts[5]);
+      o.x1=c1[0]; o.y1=c1[1]; o.x2=c2[0]; o.y2=c2[1]; o.x=p[0]; o.y=p[1]; }
+    cmds.push(o);
+  }
+
+  function ellipsePath(M, cx, cy, rx, ry){
+    emit('M',M,[cx+rx,cy]);
+    emit('C',M,[cx+rx,cy+ry*K, cx+rx*K,cy+ry, cx,cy+ry]);
+    emit('C',M,[cx-rx*K,cy+ry, cx-rx,cy+ry*K, cx-rx,cy]);
+    emit('C',M,[cx-rx,cy-ry*K, cx-rx*K,cy-ry, cx,cy-ry]);
+    emit('C',M,[cx+rx*K,cy-ry, cx+rx,cy-ry*K, cx+rx,cy]);
+    cmds.push({type:'Z'});
+  }
+
+  /* SVG arc (endpoint param) → cubic segments, emitted through M */
+  function arcToCubics(M, x1,y1, rx,ry, phiDeg, fA, fS, x2,y2){
+    if (rx===0||ry===0){ emit('L',M,[x2,y2]); return; }
+    rx=Math.abs(rx); ry=Math.abs(ry);
+    const phi=phiDeg*Math.PI/180, cp=Math.cos(phi), sp=Math.sin(phi);
+    const dx=(x1-x2)/2, dy=(y1-y2)/2;
+    const x1p=cp*dx+sp*dy, y1p=-sp*dx+cp*dy;
+    let l=(x1p*x1p)/(rx*rx)+(y1p*y1p)/(ry*ry);
+    if (l>1){ const s=Math.sqrt(l); rx*=s; ry*=s; }
+    const sign = fA===fS ? -1 : 1;
+    let num = rx*rx*ry*ry - rx*rx*y1p*y1p - ry*ry*x1p*x1p;
+    if (num<0) num=0;
+    const co = sign*Math.sqrt(num/(rx*rx*y1p*y1p + ry*ry*x1p*x1p));
+    const cxp=co*rx*y1p/ry, cyp=-co*ry*x1p/rx;
+    const cx=cp*cxp-sp*cyp+(x1+x2)/2, cy=sp*cxp+cp*cyp+(y1+y2)/2;
+    const ang=(ux,uy,vx,vy)=>{
+      const d=Math.sqrt((ux*ux+uy*uy)*(vx*vx+vy*vy));
+      let a=Math.acos(Math.min(1,Math.max(-1,(ux*vx+uy*vy)/d)));
+      if (ux*vy-uy*vx<0) a=-a; return a;
+    };
+    const th1=ang(1,0,(x1p-cxp)/rx,(y1p-cyp)/ry);
+    let dth=ang((x1p-cxp)/rx,(y1p-cyp)/ry,(-x1p-cxp)/rx,(-y1p-cyp)/ry);
+    if (!fS && dth>0) dth-=2*Math.PI;
+    if (fS && dth<0) dth+=2*Math.PI;
+    const nSeg=Math.max(1, Math.ceil(Math.abs(dth)/(Math.PI/2)));
+    const delta=dth/nSeg;
+    const t=4/3*Math.tan(delta/4);
+    let th=th1;
+    let px=x1, py=y1;
+    for (let s=0;s<nSeg;s++){
+      const th2=th+delta;
+      const c1=Math.cos(th), s1=Math.sin(th), c2=Math.cos(th2), s2=Math.sin(th2);
+      const e = (a,b)=>[cx+(cp*rx*a - sp*ry*b), cy+(sp*rx*a + cp*ry*b)];
+      const [ex,ey]=e(c2,s2);
+      const d1=[-rx*s1, ry*c1], d2=[-rx*s2, ry*c2];
+      const rot=(v)=>[cp*v[0]-sp*v[1], sp*v[0]+cp*v[1]];
+      const r1=rot(d1), r2=rot(d2);
+      emit('C',M,[px+t*r1[0], py+t*r1[1], ex-t*r2[0], ey-t*r2[1], ex, ey]);
+      px=ex; py=ey; th=th2;
+    }
+  }
+
+  function emitPathData(d, M){
+    if (!d) return;
+    const tok=/([MmLlHhVvCcSsQqTtAaZz])|(-?\d*\.?\d+(?:[eE][-+]?\d+)?)/g;
+    const toks=[]; let m;
+    while((m=tok.exec(d))) toks.push(m[1]||parseFloat(m[2]));
+    let i=0, cmd=null, cx=0, cy=0, sx=0, sy=0, pcx=null, pcy=null, pqx=null, pqy=null;
+    const num=()=>toks[i++];
+    while(i<toks.length){
+      if (typeof toks[i]==='string') cmd=toks[i++];
+      const rel = cmd===cmd.toLowerCase();
+      const C = cmd.toUpperCase();
+      switch(C){
+        case 'M': { let x=num(), y=num(); if(rel){x+=cx;y+=cy;} emit('M',M,[x,y]); cx=x;cy=y; sx=x;sy=y; cmd = rel?'l':'L'; pcx=pcy=pqx=pqy=null; break; }
+        case 'L': { let x=num(), y=num(); if(rel){x+=cx;y+=cy;} emit('L',M,[x,y]); cx=x;cy=y; pcx=pcy=pqx=pqy=null; break; }
+        case 'H': { let x=num(); if(rel)x+=cx; emit('L',M,[x,cy]); cx=x; pcx=pcy=pqx=pqy=null; break; }
+        case 'V': { let y=num(); if(rel)y+=cy; emit('L',M,[cx,y]); cy=y; pcx=pcy=pqx=pqy=null; break; }
+        case 'C': { let x1=num(),y1=num(),x2=num(),y2=num(),x=num(),y=num();
+          if(rel){x1+=cx;y1+=cy;x2+=cx;y2+=cy;x+=cx;y+=cy;}
+          emit('C',M,[x1,y1,x2,y2,x,y]); pcx=x2;pcy=y2; pqx=pqy=null; cx=x;cy=y; break; }
+        case 'S': { let x2=num(),y2=num(),x=num(),y=num();
+          if(rel){x2+=cx;y2+=cy;x+=cx;y+=cy;}
+          const x1 = pcx!=null ? 2*cx-pcx : cx, y1 = pcy!=null ? 2*cy-pcy : cy;
+          emit('C',M,[x1,y1,x2,y2,x,y]); pcx=x2;pcy=y2; pqx=pqy=null; cx=x;cy=y; break; }
+        case 'Q': { let x1=num(),y1=num(),x=num(),y=num();
+          if(rel){x1+=cx;y1+=cy;x+=cx;y+=cy;}
+          emit('Q',M,[x1,y1,x,y]); pqx=x1;pqy=y1; pcx=pcy=null; cx=x;cy=y; break; }
+        case 'T': { let x=num(),y=num(); if(rel){x+=cx;y+=cy;}
+          const x1 = pqx!=null ? 2*cx-pqx : cx, y1 = pqy!=null ? 2*cy-pqy : cy;
+          emit('Q',M,[x1,y1,x,y]); pqx=x1;pqy=y1; pcx=pcy=null; cx=x;cy=y; break; }
+        case 'A': { const rx=num(),ry=num(),rot=num(),fA=num()?1:0,fS=num()?1:0; let x=num(),y=num();
+          if(rel){x+=cx;y+=cy;}
+          arcToCubics(M, cx,cy, rx,ry, rot, fA, fS, x,y);
+          pcx=pcy=pqx=pqy=null; cx=x;cy=y; break; }
+        case 'Z': { cmds.push({type:'Z'}); cx=sx; cy=sy; pcx=pcy=pqx=pqy=null; break; }
+        default: i++; // unknown → skip token
+      }
+    }
+  }
+
+  function walk(el, M){
+    if (!el || el.nodeType!==1) return;
+    const tag = String(el.nodeName).toLowerCase().replace(/^.*:/,'');
+    if (tag==='defs'||tag==='clippath'||tag==='mask'||tag==='symbol'||tag==='metadata'||tag==='style') return;
+    const tf = el.getAttribute && el.getAttribute('transform');
+    if (tf) M = mul(M, parseTransform(tf));
+    const n = k => parseFloat(el.getAttribute(k)) || 0;
+    switch(tag){
+      case 'path': emitPathData(el.getAttribute('d'), M); break;
+      case 'rect': { const x=n('x'),y=n('y'),w=n('width'),h=n('height');
+        if (w>0&&h>0){ emit('M',M,[x,y]); emit('L',M,[x+w,y]); emit('L',M,[x+w,y+h]); emit('L',M,[x,y+h]); cmds.push({type:'Z'}); } break; }
+      case 'circle': { const r=n('r'); if(r>0) ellipsePath(M, n('cx'), n('cy'), r, r); break; }
+      case 'ellipse': { const rx=n('rx'), ry=n('ry'); if(rx>0&&ry>0) ellipsePath(M, n('cx'), n('cy'), rx, ry); break; }
+      case 'polygon': case 'polyline': {
+        const pts=(el.getAttribute('points')||'').split(/[\s,]+/).filter(Boolean).map(Number);
+        if (pts.length>=6){ emit('M',M,[pts[0],pts[1]]);
+          for (let k=2;k<pts.length-1;k+=2) emit('L',M,[pts[k],pts[k+1]]);
+          cmds.push({type:'Z'}); } break; }
+    }
+    const kids = el.childNodes || [];
+    for (let k=0;k<kids.length;k++) walk(kids[k], M);
+  }
+
+  walk(root, [1,0,0,1,0,0]);
+  if (!cmds.length) throw new Error('no drawable shapes found');
+  return cmds;
+}
+
+/* sampled tight bbox of a command list (SVG coords) */
+function cmdsBounds(cmds){
+  let x1=1e12,y1=1e12,x2=-1e12,y2=-1e12, cx=0, cy=0;
+  const see=(x,y)=>{ x1=Math.min(x1,x);y1=Math.min(y1,y);x2=Math.max(x2,x);y2=Math.max(y2,y); };
+  for (const c of cmds){
+    if (c.type==='M'||c.type==='L'){ see(c.x,c.y); cx=c.x;cy=c.y; }
+    else if (c.type==='Q'){ for(let i=1;i<=8;i++){const t=i/8,mt=1-t;
+        see(mt*mt*cx+2*mt*t*c.x1+t*t*c.x, mt*mt*cy+2*mt*t*c.y1+t*t*c.y);} cx=c.x;cy=c.y; }
+    else if (c.type==='C'){ for(let i=1;i<=8;i++){const t=i/8,mt=1-t;
+        see(mt*mt*mt*cx+3*mt*mt*t*c.x1+3*mt*t*t*c.x2+t*t*t*c.x,
+            mt*mt*mt*cy+3*mt*mt*t*c.y1+3*mt*t*t*c.y2+t*t*t*c.y);} cx=c.x;cy=c.y; }
+  }
+  return {x1,y1,x2,y2};
+}
+
+/* fit SVG cmds into font space: y-flip, scale to target height, sit on baseline */
+function fitSvgCmds(cmds, fit){
+  const m = state.metrics;
+  const target = fit==='xh' ? m.xh : fit==='em' ? m.upem : m.cap;
+  const b = cmdsBounds(cmds);
+  const h = Math.max(b.y2-b.y1, 1e-6), w = b.x2-b.x1;
+  const s = target/h;
+  const margin = Math.round(m.upem*0.04);
+  const mx = x => (x-b.x1)*s + margin;
+  const my = y => (b.y2-y)*s;             // flip: SVG y-down → font y-up, bottom on baseline
+  const out = cmds.map(c=>{
+    const o={type:c.type};
+    if (c.x!==undefined){ o.x=Math.round(mx(c.x)); o.y=Math.round(my(c.y)); }
+    if (c.x1!==undefined){ o.x1=Math.round(mx(c.x1)); o.y1=Math.round(my(c.y1)); }
+    if (c.x2!==undefined){ o.x2=Math.round(mx(c.x2)); o.y2=Math.round(my(c.y2)); }
+    return o;
+  });
+  return {cmds: out, width: Math.round(w*s + margin*2)};
+}
+
+function pathFromCommands(arr){
+  const p = new opentype.Path();
+  for (const c of arr) p.commands.push(Object.assign({}, c));
+  return p;
+}
+function serializeCommands(path){
+  return path.commands.map(c=>Object.assign({}, c));
+}
+function sourcePathOf(g, i){
+  const ov = ovOf(i);
+  if (ov && ov.path && ov.path.length) return pathFromCommands(ov.path);
+  return g.path;
+}
+function itemEmpty(item){
+  const ov = ovOf(item.i);
+  if (ov && ov.path && ov.path.length) return false;
+  return !(item.g.path && item.g.path.commands.length);
+}
+
+/* ---------------- alignment in advance ---------------- */
+/* mode: 'left' (LSB=0) | 'center' | 'right' (RSB=0). Writes the dx override. */
+function alignGlyph(gi, mode){
+  const g = glyphAt(gi);
+  if (!g) return false;
+  const src = sourcePathOf(g, gi);
+  if (!src || !src.commands.length) return false;
+  const bb = src.getBoundingBox();
+  const ov0 = ovOf(gi);
+  const adv = (ov0 && ov0.adv!=null) ? ov0.adv : (g.advanceWidth||0);
+  let dx;
+  if (mode==='left')       dx = -bb.x1;
+  else if (mode==='right') dx = adv - bb.x2;
+  else                     dx = (adv - bb.x1 - bb.x2)/2;
+  dx = Math.round(dx);
+  setOverride(gi, 'dx', dx===0 ? null : dx);
+  return true;
+}
+function alignScope(mode){
+  let n = 0;
+  const total = vBase() + virtualGlyphs.length;
+  for (let i=0; i<total; i++){
+    const g = glyphAt(i);
+    if (!g || !scopeIncludes(g, i)) continue;
+    if (alignGlyph(i, mode)) n++;
+  }
+  if (!n){ toast('Nothing in scope to align'); return; }
+  glyphCache = new Map(); cacheKey = '';
+  gridDrawnKey = '';
+  if (state.inspIdx>=0 && !$('inspector').hidden) renderInspector();
+  scheduleRender();
+  pushHistory();
+  toast('Aligned '+n+' glyph'+(n===1?'':'s')+' '+mode.toUpperCase()+' in advance');
+}
+
+function importSvgIntoGlyph(gi, svgText){
+  let cmds;
+  try{ cmds = parseSvg(svgText); }
+  catch(err){ toast('SVG import failed: '+err.message); return false; }
+  const wasEmpty = (()=>{ const g=glyphAt(gi); const ov=ovOf(gi);
+    return !((ov&&ov.path&&ov.path.length) || (g.path&&g.path.commands.length)); })();
+  const fitted = fitSvgCmds(cmds, state.svgFit);
+  const ov = state.overrides[gi] = state.overrides[gi] || {};
+  if (state.svgMode==='add'){
+    const base = (ov.path && ov.path.length) ? ov.path : serializeCommands(glyphAt(gi).path || new opentype.Path());
+    ov.path = base.concat(fitted.cmds);
+  } else {
+    ov.path = fitted.cmds;
+  }
+  if (wasEmpty && ov.adv==null) ov.adv = fitted.width;
+  gridDrawnKey = '';
+  if (state.inspIdx>=0) renderInspector();
+  scheduleRender();
+  pushHistory();
+  toast('SVG imported into '+ (gridGlyphs[state.inspIdx] ? gridGlyphs[state.inspIdx].name : 'glyph') +
+        (state.svgMode==='add' ? ' (added)' : '') + (wasEmpty&&ov.adv!=null ? ' · advance set '+ov.adv : ''));
+  return true;
+}
+
+/* ---------------- virtual glyph slots ---------------- */
+let virtualGlyphs = [];   // [{u, name, adv, glyph}]
+function vBase(){ return state.font ? state.font.glyphs.length : 0; }
+function glyphAt(i){
+  return i < vBase() ? state.font.glyphs.get(i) : (virtualGlyphs[i - vBase()] || {}).glyph;
+}
+function charGlyph(ch){
+  const u = ch.codePointAt(0);
+  for (let k=0;k<virtualGlyphs.length;k++)
+    if (virtualGlyphs[k].u===u) return {g: virtualGlyphs[k].glyph, i: vBase()+k};
+  const g = state.font.charToGlyph(ch);
+  return {g, i: g.index};
+}
+function makeVirtualGlyph(u, adv){
+  const name = 'uni' + u.toString(16).toUpperCase().padStart(4,'0');
+  return {u, name, adv,
+    glyph: new opentype.Glyph({name, unicode:u, unicodes:[u],
+      advanceWidth: adv, path: new opentype.Path()})};
+}
+function addVirtualGlyph(input){
+  input = (input||'').trim();
+  if (!input) return;
+  let u;
+  const hexm = input.match(/^(?:u\+?|0x)?([0-9a-f]{2,6})$/i);
+  if (hexm && input.length>1) u = parseInt(hexm[1],16);
+  else u = input.codePointAt(0);
+  if (!u || u<0x20 || u>0x10FFFF){ toast('Enter a character or hex like U+2605'); return; }
+  const chS = String.fromCodePoint(u);
+  if (state.font.charToGlyphIndex && state.font.charToGlyphIndex(chS) > 0){
+    toast(chS+' already exists in this font — edit it in the browser instead'); return;
+  }
+  if (virtualGlyphs.some(v=>v.u===u)){ toast(chS+' slot already added'); return; }
+  createSlotAt(u);
+}
+function createSlotAt(u){
+  const chS = String.fromCodePoint(u);
+  virtualGlyphs.push(makeVirtualGlyph(u, Math.round(state.metrics.upem*0.5)));
+  buildGlyphList(); layoutGrid(); renderGridWindow(true);
+  const li = gridGlyphs.findIndex(x=>x.i===vBase()+virtualGlyphs.length-1 || (x.u===u && x.virtual));
+  if (li>=0) openInspector(li);
+  pushHistory();
+  toast('Added slot '+chS+' (U+'+u.toString(16).toUpperCase().padStart(4,'0')+') — paste an SVG into it');
+}
+
+/* ---------------- node editor: pure mutators (testable) ---------------- */
+function prevOnCurve(cmds, ci){
+  for (let k=ci-1; k>=0; k--){
+    const c = cmds[k];
+    if (c.type==='Z') continue;
+    if (c.x!==undefined) return [c.x, c.y];
+  }
+  return [0,0];
+}
+/* all draggable handles: {ci, key:'p'|'c1'|'c2', x, y, onCurve} */
+function editHandles(cmds){
+  const out = [];
+  for (let ci=0; ci<cmds.length; ci++){
+    const c = cmds[ci];
+    if (c.type==='Z') continue;
+    if (c.x1!==undefined) out.push({ci, key:'c1', x:c.x1, y:c.y1, onCurve:false});
+    if (c.x2!==undefined) out.push({ci, key:'c2', x:c.x2, y:c.y2, onCurve:false});
+    if (c.x!==undefined)  out.push({ci, key:'p',  x:c.x,  y:c.y,  onCurve:true});
+  }
+  return out;
+}
+/* contour bounds [start,endInclusive] containing ci */
+function contourRange(cmds, ci){
+  let s=ci, e=ci;
+  while (s>0 && cmds[s].type!=='M') s--;
+  while (e<cmds.length-1 && cmds[e+1].type!=='M') e++;
+  return [s,e];
+}
+/* Coordinate slots a selected point expands to. A control handle is one slot;
+   an anchor expands to itself + its attached handles + coincident anchors
+   (M/closing-point pairs) and THEIR handles. Slots are 'ci:xfield' strings so
+   overlapping selections dedupe to exactly one move per coordinate. */
+function pointSlots(cmds, ci, key){
+  const out = new Set();
+  const c = cmds[ci];
+  if (!c) return out;
+  if (key==='c1'){ if (c.x1!==undefined) out.add(ci+':x1'); return out; }
+  if (key==='c2'){ if (c.x2!==undefined) out.add(ci+':x2'); return out; }
+  if (c.x===undefined) return out;
+  const anchorSlots = (k)=>{
+    const t = cmds[k];
+    out.add(k+':x');
+    if (t.type==='C') out.add(k+':x2');          // incoming handle
+    if (t.type==='Q') out.add(k+':x1');
+    const [cs,ce] = contourRange(cmds, k);
+    let n = k+1; if (n>ce || cmds[n].type==='Z') n = cs;   // wrap within contour
+    if (n!==k && cmds[n] && cmds[n].x1!==undefined && (cmds[n].type==='C'||cmds[n].type==='Q'))
+      out.add(n+':x1');
+  };
+  anchorSlots(ci);
+  const [cs,ce] = contourRange(cmds, ci);
+  for (let k=cs;k<=ce;k++){
+    if (k===ci) continue;
+    const t=cmds[k];
+    if (t.x!==undefined && Math.abs(t.x-c.x)<0.6 && Math.abs(t.y-c.y)<0.6) anchorSlots(k);
+  }
+  return out;
+}
+/* group move: sel = [{ci,key}] — every coordinate slot moves exactly once */
+function moveSelected(cmds, sel, dx, dy){
+  const slots = new Set();
+  for (const s of sel) for (const slot of pointSlots(cmds, s.ci, s.key)) slots.add(slot);
+  if (!slots.size) return false;
+  for (const slot of slots){
+    const [ciS, xf] = slot.split(':');
+    const ci = +ciS, yf = xf.replace('x','y');
+    cmds[ci][xf]+=dx; cmds[ci][yf]+=dy;
+  }
+  return true;
+}
+function movePoint(cmds, ci, key, dx, dy){
+  return moveSelected(cmds, [{ci, key}], dx, dy);
+}
+/* multi-delete: anchors win over their own handles; descending ci keeps
+   splice indices valid. Returns count removed/demoted. */
+function removeSelected(cmds, sel){
+  const anchors = new Set(sel.filter(s=>s.key==='p').map(s=>s.ci));
+  const items = sel.filter(s=> s.key==='p' || !anchors.has(s.ci))
+                   .sort((a,b)=> b.ci-a.ci || (a.key==='p'?-1:1));
+  let n = 0;
+  for (const s of items){
+    if (s.ci>=cmds.length) continue;
+    const c = cmds[s.ci];
+    if (s.key!=='p' && c.x1===undefined && c.x2===undefined) continue;
+    if (removePoint(cmds, s.ci, s.key)) n++;
+  }
+  return n;
+}
+function splitQAt(p0,p1,p2,t){
+  const L=(a,b)=>[a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t];
+  const m01=L(p0,p1), m12=L(p1,p2), mid=L(m01,m12);
+  return [[p0,m01,mid],[mid,m12,p2]];
+}
+function splitCAt(p0,p1,p2,p3,t){
+  const L=(a,b)=>[a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t];
+  const m01=L(p0,p1), m12=L(p1,p2), m23=L(p2,p3);
+  const a=L(m01,m12), b=L(m12,m23), mid=L(a,b);
+  return [[p0,m01,a,mid],[mid,b,m23,p3]];
+}
+/* insert an on-curve point at parameter t of segment ci; returns true on success */
+function insertPoint(cmds, ci, t){
+  const c = cmds[ci];
+  if (!c || c.type==='M' || c.type==='Z') return false;
+  const p0 = prevOnCurve(cmds, ci);
+  const R = v => Math.round(v*10)/10;
+  if (c.type==='L'){
+    const nx = R(p0[0]+(c.x-p0[0])*t), ny = R(p0[1]+(c.y-p0[1])*t);
+    cmds.splice(ci, 0, {type:'L', x:nx, y:ny});
+    return true;
+  }
+  if (c.type==='Q'){
+    const [a,b] = splitQAt(p0,[c.x1,c.y1],[c.x,c.y],t);
+    cmds.splice(ci, 1,
+      {type:'Q', x1:R(a[1][0]), y1:R(a[1][1]), x:R(a[2][0]), y:R(a[2][1])},
+      {type:'Q', x1:R(b[1][0]), y1:R(b[1][1]), x:R(b[2][0]), y:R(b[2][1])});
+    return true;
+  }
+  if (c.type==='C'){
+    const [a,b] = splitCAt(p0,[c.x1,c.y1],[c.x2,c.y2],[c.x,c.y],t);
+    cmds.splice(ci, 1,
+      {type:'C', x1:R(a[1][0]), y1:R(a[1][1]), x2:R(a[2][0]), y2:R(a[2][1]), x:R(a[3][0]), y:R(a[3][1])},
+      {type:'C', x1:R(b[1][0]), y1:R(b[1][1]), x2:R(b[2][0]), y2:R(b[2][1]), x:R(b[3][0]), y:R(b[3][1])});
+    return true;
+  }
+  return false;
+}
+/* remove: a control handle demotes its segment to a line; an anchor removes
+   its segment (M anchors are refused). Returns true on success. */
+function removePoint(cmds, ci, key){
+  const c = cmds[ci];
+  if (!c) return false;
+  if (key==='c1' || key==='c2'){
+    cmds[ci] = {type:'L', x:c.x, y:c.y};
+    return true;
+  }
+  if (c.type==='M') return false;
+  cmds.splice(ci, 1);
+  return true;
+}
+
+/* ---------------- node editor: view + interaction ---------------- */
+const ed = {gi:-1, cmds:null, view:{z:0.2, ox:60, oy:380}, sel:null,
+            selPts:new Set(), marquee:null,
+            drag:null, dirty:false, createdPath:false};
+const edKey = (ci,key)=> ci+'|'+key;
+function edSelArr(){
+  return [...ed.selPts].map(s=>{ const [ci,key]=s.split('|'); return {ci:+ci, key}; });
+}
+
+function enterEdit(){
+  if (state.inspIdx<0) return;
+  const item = gridGlyphs[state.inspIdx];
+  const gi = item.i;
+  const g = glyphAt(gi);
+  const ov = state.overrides[gi] = state.overrides[gi] || {};
+  ed.createdPath = false;
+  if (!ov.path || !ov.path.length){
+    if (!(g.path && g.path.commands.length)){
+      if (!Object.keys(ov).length) delete state.overrides[gi];
+      toast('Empty glyph — paste an SVG into it first'); return;
+    }
+    ov.path = serializeCommands(g.path);
+    ed.createdPath = true;
+  }
+  ed.gi = gi; ed.cmds = ov.path; ed.sel = null; ed.selPts = new Set(); ed.marquee = null; ed.drag = null; ed.dirty = false;
+  state.editMode = true;
+  document.querySelector('.insp-panel').classList.add('editing');
+  $('editBtn').textContent = 'DONE';
+  $('inspHint').hidden = true; $('editHint').hidden = false; $('editTools').hidden = false;
+  edFitView();
+  renderEditor();
+}
+function exitEdit(){
+  if (!state.editMode) return;
+  state.editMode = false;
+  /* entering+leaving without touching anything shouldn't mark the glyph edited */
+  if (!ed.dirty && ed.createdPath){
+    const ov = state.overrides[ed.gi];
+    if (ov){ delete ov.path; if (!Object.keys(ov).length) delete state.overrides[ed.gi]; }
+  }
+  document.querySelector('.insp-panel').classList.remove('editing');
+  $('editBtn').textContent = 'EDIT POINTS';
+  $('inspHint').hidden = false; $('editHint').hidden = true; $('editTools').hidden = true;
+  if (ed.dirty){ gridDrawnKey=''; pushHistory(); scheduleRender(); }
+  ed.gi = -1; ed.cmds = null; ed.sel = null; ed.selPts = new Set(); ed.marquee = null;
+  renderInspector();
+}
+function edFitView(){
+  const canvas = $('inspCanvas');
+  const cssW = canvas.parentElement.clientWidth || 900, cssH = 480;
+  const m = state.metrics;
+  const b = (function(){
+    const p = pathFromCommands(ed.cmds);
+    const bb = p.getBoundingBox();
+    return {x1:Math.min(bb.x1,0), y1:Math.min(bb.y1,m.desc), x2:Math.max(bb.x2, edAdv()), y2:Math.max(bb.y2,m.cap)};
+  })();
+  const z = Math.min((cssW-100)/Math.max(b.x2-b.x1,1), (cssH-80)/Math.max(b.y2-b.y1,1));
+  ed.view.z = z;
+  ed.view.ox = (cssW - (b.x2-b.x1)*z)/2 - b.x1*z;
+  ed.view.oy = cssH - ((cssH - (b.y2-b.y1)*z)/2 - b.y1*z);
+}
+function edAdv(){
+  const ov = ovOf(ed.gi);
+  const g = glyphAt(ed.gi);
+  return (ov && ov.adv!=null) ? ov.adv : (g.advanceWidth||0);
+}
+const edSX = fx => ed.view.ox + fx*ed.view.z;
+const edSY = fy => ed.view.oy - fy*ed.view.z;
+const edFX = sx => (sx - ed.view.ox)/ed.view.z;
+const edFY = sy => (ed.view.oy - sy)/ed.view.z;
+
+function renderEditor(){
+  const canvas = $('inspCanvas');
+  const cssW = canvas.parentElement.clientWidth || 900, cssH = 480;
+  const ctx = setupCanvas(canvas, cssW, cssH);
+  ctx.clearRect(0,0,cssW,cssH);
+  const m = state.metrics, z = ed.view.z;
+
+  /* guides */
+  ctx.font = '500 8px "Azeret Mono", monospace';
+  ctx.strokeStyle = '#2B3FE0'; ctx.fillStyle = '#2B3FE0';
+  for (const [label, u] of [['ASC',m.asc],['CAP',m.cap],['X',m.xh],['BASE',0],['DESC',m.desc]]){
+    const y = edSY(u);
+    if (y<-10||y>cssH+10) continue;
+    ctx.globalAlpha = u===0?.8:.35; ctx.setLineDash(u===0?[]:[2,4]);
+    ctx.beginPath(); ctx.moveTo(0,y+.5); ctx.lineTo(cssW,y+.5); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=.9; ctx.fillText(label, 4, y-3);
+  }
+  ctx.globalAlpha=.5; ctx.setLineDash([3,3]);
+  for (const u of [0, edAdv()]){
+    const x = edSX(u);
+    ctx.beginPath(); ctx.moveTo(x+.5,0); ctx.lineTo(x+.5,cssH); ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.globalAlpha=1;
+
+  /* filled shape, faint */
+  const p = pathFromCommands(ed.cmds);
+  ctx.fillStyle = 'rgba(18,19,22,.09)';
+  drawGlyphPath(ctx, p, ed.view.ox, ed.view.oy, z);
+  /* contour stroke */
+  ctx.strokeStyle = '#121316'; ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  for (const c of p.commands){
+    switch(c.type){
+      case 'M': ctx.moveTo(edSX(c.x), edSY(c.y)); break;
+      case 'L': ctx.lineTo(edSX(c.x), edSY(c.y)); break;
+      case 'Q': ctx.quadraticCurveTo(edSX(c.x1),edSY(c.y1),edSX(c.x),edSY(c.y)); break;
+      case 'C': ctx.bezierCurveTo(edSX(c.x1),edSY(c.y1),edSX(c.x2),edSY(c.y2),edSX(c.x),edSY(c.y)); break;
+      case 'Z': ctx.closePath(); break;
+    }
+  }
+  ctx.stroke();
+
+  /* handle lines */
+  ctx.strokeStyle = '#2B3FE0'; ctx.lineWidth = .75; ctx.globalAlpha = .7;
+  let prev=[0,0];
+  for (let ci=0; ci<ed.cmds.length; ci++){
+    const c = ed.cmds[ci];
+    if (c.type==='Z') continue;
+    if (c.type==='Q'){
+      ctx.beginPath(); ctx.moveTo(edSX(prev[0]),edSY(prev[1])); ctx.lineTo(edSX(c.x1),edSY(c.y1)); ctx.lineTo(edSX(c.x),edSY(c.y)); ctx.stroke();
+    } else if (c.type==='C'){
+      ctx.beginPath(); ctx.moveTo(edSX(prev[0]),edSY(prev[1])); ctx.lineTo(edSX(c.x1),edSY(c.y1)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(edSX(c.x),edSY(c.y)); ctx.lineTo(edSX(c.x2),edSY(c.y2)); ctx.stroke();
+    }
+    if (c.x!==undefined) prev=[c.x,c.y];
+  }
+  ctx.globalAlpha = 1;
+
+  /* points */
+  for (const h of editHandles(ed.cmds)){
+    const x = edSX(h.x), y = edSY(h.y);
+    const isSel = ed.selPts.has(edKey(h.ci, h.key));
+    if (h.onCurve){
+      ctx.fillStyle = isSel ? '#2B3FE0' : '#121316';
+      ctx.fillRect(x-3.5, y-3.5, 7, 7);
+      if (ed.cmds[h.ci].type==='M'){ ctx.strokeStyle='#F2F1EC'; ctx.lineWidth=1; ctx.strokeRect(x-2,y-2,4,4); }
+    } else {
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 7);
+      ctx.fillStyle = isSel ? '#2B3FE0' : '#F2F1EC';
+      ctx.fill();
+      ctx.strokeStyle = '#2B3FE0'; ctx.lineWidth = 1.25; ctx.stroke();
+    }
+  }
+
+  /* marquee */
+  if (ed.marquee){
+    const mq = ed.marquee;
+    ctx.strokeStyle = '#2B3FE0'; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+    ctx.strokeRect(Math.min(mq.x0,mq.x1)+.5, Math.min(mq.y0,mq.y1)+.5,
+                   Math.abs(mq.x1-mq.x0), Math.abs(mq.y1-mq.y0));
+    ctx.setLineDash([]);
+  }
+
+  /* HUD */
+  ctx.fillStyle = '#75736B'; ctx.font = '500 9px "Azeret Mono", monospace';
+  let hud = Math.round(z*100)+'% \u00b7 ADV '+edAdv();
+  if (ed.selPts.size>1) hud += ' \u00b7 '+ed.selPts.size+' selected';
+  else if (ed.sel && ed.cmds[ed.sel.ci]){
+    const c = ed.cmds[ed.sel.ci];
+    const px = ed.sel.key==='c1'?c.x1: ed.sel.key==='c2'?c.x2: c.x;
+    const py = ed.sel.key==='c1'?c.y1: ed.sel.key==='c2'?c.y2: c.y;
+    hud += ' \u00b7 SEL '+Math.round(px)+', '+Math.round(py);
+  }
+  ctx.fillText(hud, 8, cssH-8);
+}
+
+function edHitPoint(sx, sy){
+  /* 12px grab radius; when an anchor and a handle overlap, the anchor wins */
+  let best=null, bs=12;
+  for (const h of editHandles(ed.cmds)){
+    const d = Math.hypot(edSX(h.x)-sx, edSY(h.y)-sy);
+    if (d>12) continue;
+    const score = d - (h.onCurve ? 3 : 0);
+    if (score<bs){ bs=score; best=h; }
+  }
+  return best;
+}
+function edHitSegment(sx, sy){
+  let best=null, bd=8;
+  let prev=[0,0];
+  for (let ci=0; ci<ed.cmds.length; ci++){
+    const c = ed.cmds[ci];
+    if (c.type==='M'){ prev=[c.x,c.y]; continue; }
+    if (c.type==='Z') continue;
+    for (let s=1; s<=20; s++){
+      const t=s/20, mt=1-t;
+      let x,y;
+      if (c.type==='L'){ x=prev[0]+(c.x-prev[0])*t; y=prev[1]+(c.y-prev[1])*t; }
+      else if (c.type==='Q'){ x=mt*mt*prev[0]+2*mt*t*c.x1+t*t*c.x; y=mt*mt*prev[1]+2*mt*t*c.y1+t*t*c.y; }
+      else { x=mt*mt*mt*prev[0]+3*mt*mt*t*c.x1+3*mt*t*t*c.x2+t*t*t*c.x;
+             y=mt*mt*mt*prev[1]+3*mt*mt*t*c.y1+3*mt*t*t*c.y2+t*t*t*c.y; }
+      const d = Math.hypot(edSX(x)-sx, edSY(y)-sy);
+      if (d<bd){ bd=d; best={ci, t}; }
+    }
+    prev=[c.x,c.y];
+  }
+  return best;
+}
+function edSnap(fx, fy){
+  const m = state.metrics, tol = 6/ed.view.z;
+  for (const u of [0, m.xh, m.cap, m.asc, m.desc]) if (Math.abs(fy-u)<tol) fy=u;
+  for (const u of [0, edAdv()]) if (Math.abs(fx-u)<tol) fx=u;
+  return [Math.round(fx), Math.round(fy)];
+}
+function edMutated(){
+  ed.dirty = true;
+  gridDrawnKey = '';
+  renderEditor();
+}
+
+/* ---------------- history (undo/redo) ---------------- */
+const SNAP_FIELDS = ['origin','slant','shearY','rotate','scaleX','scaleY','wave','waveF','bulge','taper',
+  'rough','track','slantComp','gOffset','strokeMode','strokeW','koEnable','koGap','koPriority','scope'];
+let history = [], histPtr = -1;
+function snapshot(){
+  const s = {};
+  for (const k of SNAP_FIELDS) s[k] = state[k];
+  return {s, o: JSON.parse(JSON.stringify(state.overrides)), sel: [...selSet],
+          vg: virtualGlyphs.map(v=>({u:v.u, adv:v.adv}))};
+}
+function pushHistory(){
+  const snap = snapshot();
+  if (histPtr>=0 && JSON.stringify(history[histPtr])===JSON.stringify(snap)) return;
+  history = history.slice(0, histPtr+1);
+  history.push(snap);
+  if (history.length>60) history.shift();
+  histPtr = history.length-1;
+  updateHistBtns();
+  scheduleAutosave();
+}
+function applySnapshot(snap){
+  for (const k of SNAP_FIELDS) state[k] = snap.s[k];
+  state.overrides = JSON.parse(JSON.stringify(snap.o));
+  selSet = new Set(snap.sel); selVer++;
+  virtualGlyphs = (snap.vg||[]).map(v=>makeVirtualGlyph(v.u, v.adv));
+  if (state.editMode){
+    const ov = state.overrides[ed.gi];
+    if (ov && ov.path && ov.path.length){ ed.cmds = ov.path; ed.sel = null; }
+    else exitEdit();
+  }
+  syncUIFromState();
+  glyphCache = new Map(); cacheKey = '';
+  gridDrawnKey = '';
+  if (state.font){ buildGlyphList(); layoutGrid(); }
+  scheduleRender();
+  scheduleAutosave();
+}
+function undo(){ if (histPtr>0){ histPtr--; applySnapshot(history[histPtr]); updateHistBtns(); } }
+function redo(){ if (histPtr<history.length-1){ histPtr++; applySnapshot(history[histPtr]); updateHistBtns(); } }
+function updateHistBtns(){
+  $('undoBtn').disabled = !(histPtr>0);
+  $('redoBtn').disabled = !(histPtr<history.length-1);
+}
+function syncUIFromState(){
+  for (const [key, sid, vid, fmt] of sliders){
+    $(sid).value = state[key];
+    $(vid).value = fmt(String(state[key]));
+  }
+  for (const b of $('originSeg').children) b.setAttribute('aria-pressed', b.dataset.origin===state.origin);
+  for (const b of $('strokeSeg').children) b.setAttribute('aria-pressed', b.dataset.stroke===state.strokeMode);
+  for (const b of $('koSeg').children)     b.setAttribute('aria-pressed', b.dataset.ko===state.koPriority);
+  for (const b of $('scopeSeg').children)  b.setAttribute('aria-pressed', b.dataset.scope===state.scope);
+  $('slantComp').checked = state.slantComp;
+  $('koEnable').checked = state.koEnable;
+}
+
+/* ---------------- project save / load / autosave ---------------- */
+function fontSig(){
+  if (!state.font) return '';
+  const fam = (state.font.names.fontFamily && state.font.names.fontFamily.en) || 'font';
+  return fam + '|' + state.font.glyphs.length + '|' + state.font.unitsPerEm;
+}
+function projectJSON(){
+  return JSON.stringify({
+    app:'glyphwerk', v:2, font: fontSig(),
+    snap: snapshot(),
+    names: {family: $('nameFamily').value, style: $('nameStyle').value},
+    meta: {designer:$('metaDesigner').value, foundry:$('metaFoundry').value,
+           copyright:$('metaCopyright').value, version:$('metaVersion').value, url:$('metaURL').value},
+    sample: $('sampleText').value,
+  });
+}
+function applyProject(p, silent){
+  try{
+    if (!p || p.app!=='glyphwerk') throw new Error('not a Glyphwerk project');
+    if (p.names){ $('nameFamily').value = p.names.family||''; $('nameStyle').value = p.names.style||''; updatePSPreview(); }
+    if (p.meta){ $('metaDesigner').value=p.meta.designer||''; $('metaFoundry').value=p.meta.foundry||'';
+      $('metaCopyright').value=p.meta.copyright||''; $('metaVersion').value=p.meta.version||'1.000'; $('metaURL').value=p.meta.url||''; }
+    if (p.sample) $('sampleText').value = p.sample;
+    applySnapshot(p.snap);
+    pushHistory();
+    if (!silent) toast('Project loaded' + (p.font!==fontSig() ? ' \u2014 note: saved for a different font ('+(p.font||'?').split('|')[0]+')' : ''));
+    return true;
+  }catch(err){ if(!silent) toast('Could not load project: '+err.message); return false; }
+}
+function saveProject(){
+  const blob = new Blob([projectJSON()], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = sanitizePS(($('nameFamily').value||'font')+'-'+($('nameStyle').value||'project')) + '.gwproj.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('Project saved');
+}
+let autosaveTimer = null;
+function scheduleAutosave(){
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(()=>{
+    try{ if(state.font) localStorage.setItem('gwproj:'+fontSig(), projectJSON()); }catch(e){}
+  }, 800);
+}
+function tryRestore(){
+  try{
+    const raw = localStorage.getItem('gwproj:'+fontSig());
+    if (!raw) return false;
+    const p = JSON.parse(raw);
+    if (applyProject(p, true)){ toast('Restored previous session for this font \u2014 Reset all to discard'); return true; }
+  }catch(e){}
+  return false;
+}
+
 function loadFile(file){
   const reader = new FileReader();
   reader.onload = e => {
@@ -1295,6 +2562,15 @@ function loadFile(file){
     $('thumbBtn').disabled = false;
     $('svgBtn').disabled = false;
     glyphCache = new Map(); cacheKey = '';
+    state.selected = -1; state.inspIdx = -1;
+    state.overrides = {}; selSet = new Set(); selVer++;
+    virtualGlyphs = [];
+    $('projSave').disabled = false; $('projLoad').disabled = false;
+    history = []; histPtr = -1;
+    tryRestore();
+    pushHistory();
+    buildGlyphList();
+    layoutGrid();
     scheduleRender();
   };
   reader.readAsArrayBuffer(file);
@@ -1324,6 +2600,7 @@ for (const [key, sid, vid, fmt] of sliders){
     v.value = fmt(s.value);
     scheduleRender();
   });
+  s.addEventListener('change', pushHistory);   // commit at end of drag
   /* typed value entry */
   v.addEventListener('change', ()=>{
     const n = parseFloat(v.value.replace(/[^\-0-9.]/g,''));
@@ -1333,6 +2610,7 @@ for (const [key, sid, vid, fmt] of sliders){
     }
     v.value = fmt(s.value);
     scheduleRender();
+    pushHistory();
   });
 }
 
@@ -1342,6 +2620,7 @@ $('originSeg').addEventListener('click', e=>{
   state.origin = btn.dataset.origin;
   for (const b of $('originSeg').children) b.setAttribute('aria-pressed', b===btn);
   scheduleRender();
+  pushHistory();
 });
 
 $('strokeSeg').addEventListener('click', e=>{
@@ -1350,6 +2629,7 @@ $('strokeSeg').addEventListener('click', e=>{
   state.strokeMode = btn.dataset.stroke;
   for (const b of $('strokeSeg').children) b.setAttribute('aria-pressed', b===btn);
   scheduleRender();
+  pushHistory();
 });
 
 $('koSeg').addEventListener('click', e=>{
@@ -1358,13 +2638,249 @@ $('koSeg').addEventListener('click', e=>{
   state.koPriority = btn.dataset.ko;
   for (const b of $('koSeg').children) b.setAttribute('aria-pressed', b===btn);
   scheduleRender();
+  pushHistory();
 });
 
-$('koEnable').addEventListener('change', e=>{ state.koEnable = e.target.checked; scheduleRender(); });
+$('koEnable').addEventListener('change', e=>{ state.koEnable = e.target.checked; scheduleRender(); pushHistory(); });
+
+$('scopeSeg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-scope]');
+  if (!btn) return;
+  state.scope = btn.dataset.scope;
+  for (const b of $('scopeSeg').children) b.setAttribute('aria-pressed', b===btn);
+  gridDrawnKey = '';
+  scheduleRender();
+  pushHistory();
+});
+
+/* override editors */
+const OV_MAP = [['ov-adv','adv'],['ov-dx','dx'],['ov-dy','dy'],['ov-sx','sx'],['ov-sy','sy'],['ov-rot','rot']];
+for (const [id, field] of OV_MAP){
+  $(id).addEventListener('change', ()=>{
+    if (state.inspIdx<0) return;
+    const gi = gridGlyphs[state.inspIdx].i;
+    const raw = $(id).value.trim();
+    setOverride(gi, field, raw==='' ? null : parseFloat(raw));
+    gridDrawnKey = '';
+    renderInspector();
+    scheduleRender();
+    pushHistory();
+  });
+}
+$('ovReset').addEventListener('click', ()=>{
+  if (state.inspIdx<0) return;
+  delete state.overrides[gridGlyphs[state.inspIdx].i];
+  gridDrawnKey = '';
+  renderInspector();
+  scheduleRender();
+  pushHistory();
+});
+
+/* undo / redo */
+$('undoBtn').addEventListener('click', undo);
+$('redoBtn').addEventListener('click', redo);
+document.addEventListener('keydown', e=>{
+  const tag = (e.target && e.target.tagName || '').toLowerCase();
+  if (tag==='input' || tag==='textarea') return;   // don't hijack text editing
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && !e.shiftKey && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+  else if (mod && (e.key.toLowerCase()==='y' || (e.shiftKey && e.key.toLowerCase()==='z'))){ e.preventDefault(); redo(); }
+});
+
+/* SVG import wiring */
+state.svgFit = 'cap'; state.svgMode = 'replace';
+$('svgFitSeg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-fit]'); if (!btn) return;
+  state.svgFit = btn.dataset.fit;
+  for (const b of $('svgFitSeg').children) b.setAttribute('aria-pressed', b===btn);
+});
+$('svgModeSeg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-mode]'); if (!btn) return;
+  state.svgMode = btn.dataset.mode;
+  for (const b of $('svgModeSeg').children) b.setAttribute('aria-pressed', b===btn);
+});
+$('svgPasteBtn').addEventListener('click', async ()=>{
+  if (state.inspIdx<0) return;
+  try{
+    const txt = await navigator.clipboard.readText();
+    if (!txt || txt.indexOf('<svg')===-1){ toast('Clipboard has no SVG markup'); return; }
+    importSvgIntoGlyph(gridGlyphs[state.inspIdx].i, txt);
+  }catch(err){ toast('Clipboard blocked — press Ctrl+V instead, or drop an .svg file'); }
+});
+document.addEventListener('paste', e=>{
+  if ($('inspector').hidden || state.inspIdx<0) return;
+  const tag = (e.target && e.target.tagName || '').toLowerCase();
+  if (tag==='input' || tag==='textarea') return;
+  const txt = e.clipboardData && e.clipboardData.getData('text/plain');
+  if (txt && txt.indexOf('<svg')!==-1){
+    e.preventDefault();
+    importSvgIntoGlyph(gridGlyphs[state.inspIdx].i, txt);
+  }
+});
+(function(){
+  const panel = document.querySelector('.insp-panel');
+  ['dragover','dragenter'].forEach(ev=>panel.addEventListener(ev, e=>{
+    e.preventDefault(); e.stopPropagation(); panel.classList.add('svg-over'); }));
+  ['dragleave','drop'].forEach(ev=>panel.addEventListener(ev, e=>{
+    e.preventDefault(); e.stopPropagation(); panel.classList.remove('svg-over'); }));
+  panel.addEventListener('drop', e=>{
+    if (state.inspIdx<0) return;
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f || !/\.svg$/i.test(f.name)){ toast('Drop an .svg file'); return; }
+    const r = new FileReader();
+    r.onload = ev => importSvgIntoGlyph(gridGlyphs[state.inspIdx].i, ev.target.result);
+    r.readAsText(f);
+  });
+})();
+
+/* add glyph slot */
+$('addGlyphBtn').addEventListener('click', ()=>{
+  if (!state.font){ toast('Load a font first'); return; }
+  const input = window.prompt('New glyph slot — enter a character or hex codepoint (e.g. \u2605 or U+2605):');
+  if (input!=null) addVirtualGlyph(input);
+});
+
+/* node editor wiring */
+$('editBtn').addEventListener('click', ()=>{ state.editMode ? exitEdit() : enterEdit(); });
+function edZoom(f){
+  const canvas = $('inspCanvas');
+  const cx = (canvas.parentElement.clientWidth||900)/2, cyv = 240;
+  const fx = edFX(cx), fy = edFY(cyv);
+  ed.view.z = Math.min(4, Math.max(0.02, ed.view.z*f));
+  ed.view.ox = cx - fx*ed.view.z;
+  ed.view.oy = cyv + fy*ed.view.z;
+  renderEditor();
+}
+$('etFit').addEventListener('click', ()=>{ if(state.editMode){ edFitView(); renderEditor(); } });
+$('etZoomIn').addEventListener('click', ()=>{ if(state.editMode) edZoom(1.3); });
+$('etZoomOut').addEventListener('click', ()=>{ if(state.editMode) edZoom(1/1.3); });
+$('etAll').addEventListener('click', ()=>{
+  if(!state.editMode) return;
+  ed.selPts = new Set(editHandles(ed.cmds).map(h=>edKey(h.ci,h.key)));
+  renderEditor();
+});
+$('etNone').addEventListener('click', ()=>{
+  if(!state.editMode) return;
+  ed.selPts = new Set(); ed.sel = null;
+  renderEditor();
+});
+(function(){
+  const c = $('inspCanvas');
+  let panning = null;
+  c.addEventListener('pointerdown', e=>{
+    if (!state.editMode) return;
+    const r = c.getBoundingClientRect();
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    const hit = edHitPoint(sx, sy);
+    if (hit){
+      const k = edKey(hit.ci, hit.key);
+      if (e.shiftKey){
+        /* shift-click on a point: toggle membership, no drag */
+        if (ed.selPts.has(k)) ed.selPts.delete(k); else ed.selPts.add(k);
+        ed.sel = {ci:hit.ci, key:hit.key};
+        renderEditor();
+        return;
+      }
+      if (!ed.selPts.has(k)){ ed.selPts = new Set([k]); }
+      ed.sel = {ci:hit.ci, key:hit.key};
+      ed.drag = {sx, sy, moved:false};
+      c.setPointerCapture(e.pointerId);
+      renderEditor();
+    } else if (e.shiftKey){
+      /* shift-drag on empty: marquee select */
+      ed.marquee = {x0:sx, y0:sy, x1:sx, y1:sy, add: true};
+      c.setPointerCapture(e.pointerId);
+      renderEditor();
+    } else {
+      ed.sel = null; ed.selPts = new Set();
+      panning = {sx, sy, ox:ed.view.ox, oy:ed.view.oy};
+      c.setPointerCapture(e.pointerId);
+      renderEditor();
+    }
+  });
+  c.addEventListener('pointermove', e=>{
+    if (!state.editMode) return;
+    const r = c.getBoundingClientRect();
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    if (ed.marquee){
+      ed.marquee.x1 = sx; ed.marquee.y1 = sy;
+      renderEditor();
+    } else if (ed.drag && ed.sel && ed.cmds[ed.sel.ci]){
+      /* drag whole selection; snap the grabbed point, apply its delta to all */
+      const c0 = ed.cmds[ed.sel.ci];
+      const cur = ed.sel.key==='c1' ? [c0.x1,c0.y1] : ed.sel.key==='c2' ? [c0.x2,c0.y2] : [c0.x,c0.y];
+      let [nfx, nfy] = [edFX(sx), edFY(sy)];
+      if (ed.sel.key==='p') [nfx, nfy] = edSnap(nfx, nfy);
+      else { nfx = Math.round(nfx); nfy = Math.round(nfy); }
+      const dx = nfx - cur[0], dy = nfy - cur[1];
+      if (dx!==0 || dy!==0){
+        moveSelected(ed.cmds, edSelArr(), dx, dy);
+        ed.drag.moved = true;
+        ed.dirty = true;
+        renderEditor();
+      }
+    } else if (panning){
+      ed.view.ox = panning.ox + (sx - panning.sx);
+      ed.view.oy = panning.oy + (sy - panning.sy);
+      renderEditor();
+    } else {
+      /* idle hover: show a grab cursor over points */
+      c.style.cursor = edHitPoint(sx, sy) ? 'move' : 'crosshair';
+    }
+  });
+  const endDrag = ()=>{
+    if (ed.marquee){
+      const mq = ed.marquee;
+      const X0=Math.min(mq.x0,mq.x1), X1=Math.max(mq.x0,mq.x1);
+      const Y0=Math.min(mq.y0,mq.y1), Y1=Math.max(mq.y0,mq.y1);
+      for (const h of editHandles(ed.cmds)){
+        const x = edSX(h.x), y = edSY(h.y);
+        if (x>=X0 && x<=X1 && y>=Y0 && y<=Y1) ed.selPts.add(edKey(h.ci, h.key));
+      }
+      ed.marquee = null;
+      renderEditor();
+    }
+    if (ed.drag && ed.drag.moved){ gridDrawnKey=''; pushHistory(); scheduleRender(); }
+    ed.drag = null; panning = null;
+  };
+  c.addEventListener('pointerup', endDrag);
+  c.addEventListener('pointercancel', endDrag);
+  c.addEventListener('dblclick', e=>{
+    if (!state.editMode) return;
+    const r = c.getBoundingClientRect();
+    const hit = edHitSegment(e.clientX - r.left, e.clientY - r.top);
+    if (hit && insertPoint(ed.cmds, hit.ci, hit.t)){
+      ed.sel = null; ed.selPts = new Set(); edMutated(); pushHistory(); toast('Point added');
+    }
+  });
+  c.addEventListener('wheel', e=>{
+    if (!state.editMode) return;
+    e.preventDefault();
+    const r = c.getBoundingClientRect();
+    const sx = e.clientX - r.left, sy = e.clientY - r.top;
+    const fx = edFX(sx), fy = edFY(sy);
+    const f = e.deltaY < 0 ? 1.15 : 1/1.15;
+    ed.view.z = Math.min(4, Math.max(0.02, ed.view.z * f));
+    ed.view.ox = sx - fx*ed.view.z;
+    ed.view.oy = sy + fy*ed.view.z;
+    renderEditor();
+  }, {passive:false});
+})();
+
+/* project buttons */
+$('projSave').addEventListener('click', saveProject);
+$('projLoad').addEventListener('click', ()=> $('projInput').click());
+$('projInput').addEventListener('change', e=>{
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => { try{ applyProject(JSON.parse(ev.target.result), false); }catch(err){ toast('Invalid project file'); } };
+  r.readAsText(f);
+  e.target.value = '';
+});
 $('svgBtn').addEventListener('click', exportSVG);
 $('thumbBtn').addEventListener('click', downloadThumbnail);
 
-$('slantComp').addEventListener('change', e=>{ state.slantComp = e.target.checked; scheduleRender(); });
+$('slantComp').addEventListener('change', e=>{ state.slantComp = e.target.checked; scheduleRender(); pushHistory(); });
 $('sampleText').addEventListener('input', scheduleRender);
 $('s-size').addEventListener('input', e=>{ state.size = parseFloat(e.target.value); scheduleRender(); });
 $('nameFamily').addEventListener('input', updatePSPreview);
@@ -1393,7 +2909,12 @@ document.querySelectorAll('.sec-reset').forEach(b=>{
   });
 });
 $('resetAllBtn').addEventListener('click', ()=>{
+  state.overrides = {}; selSet = new Set(); selVer++;
+  state.scope = 'all';
+  for (const b of $('scopeSeg').children) b.setAttribute('aria-pressed', b.dataset.scope==='all');
   resetGroup(['slant','shearY','rotate','scaleX','scaleY','wave','waveF','bulge','taper','rough','track','gOffset','strokeW']);
+  gridDrawnKey = '';
+  pushHistory();
 });
 
 /* drop zone */
@@ -1434,7 +2955,153 @@ document.addEventListener('drop', e=>{
   c.addEventListener('pointercancel', ()=> dragging=false);
 })();
 
-window.addEventListener('resize', scheduleRender);
+window.addEventListener('resize', ()=>{ if(state.font){ layoutGrid(); } scheduleRender(); });
+
+/* glyph browser wiring */
+(function(){
+  const sel = $('uniBlock');
+  UNI_BLOCKS.forEach((b, i)=>{
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = b[1]>=0
+      ? b[0]+'  '+b[1].toString(16).toUpperCase().padStart(4,'0')+'\u2013'+b[2].toString(16).toUpperCase().padStart(4,'0')
+      : b[0];
+    sel.appendChild(o);
+  });
+})();
+function browserModeUI(){
+  const uni = state.browserMode==='unicode';
+  $('glyphSearch').hidden = uni;
+  $('uniBlock').hidden = !uni;
+  $('ccWrap').hidden = !uni;
+  $('uniRange').hidden = !(uni && UNI_BLOCKS[state.uniBlockIdx][1] < 0);
+}
+$('modeSeg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-bmode]');
+  if (!btn || !state.font) return;
+  state.browserMode = btn.dataset.bmode;
+  for (const b of $('modeSeg').children) b.setAttribute('aria-pressed', b===btn);
+  browserModeUI();
+  buildGlyphList(); layoutGrid(); renderGridWindow(true);
+});
+$('uniBlock').addEventListener('change', ()=>{
+  state.uniBlockIdx = parseInt($('uniBlock').value,10)||0;
+  browserModeUI();
+  buildGlyphList(); layoutGrid(); renderGridWindow(true);
+});
+$('uniRange').addEventListener('change', ()=>{ buildGlyphList(); layoutGrid(); renderGridWindow(true); });
+$('ccToggle').addEventListener('change', e=>{ state.clickCreate = e.target.checked; });
+
+/* alignment */
+$('alignSeg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-align]');
+  if (!btn || state.inspIdx<0) return;
+  const gi = gridGlyphs[state.inspIdx].i;
+  if (!alignGlyph(gi, btn.dataset.align)){ toast('Empty glyph \u2014 nothing to align'); return; }
+  gridDrawnKey = '';
+  renderInspector();
+  scheduleRender();
+  pushHistory();
+});
+$('alignAllSeg').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-align]');
+  if (!btn || !state.font) return;
+  alignScope(btn.dataset.align);
+});
+
+let searchTimer = null;
+$('glyphSearch').addEventListener('input', ()=>{
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(()=>{
+    if (!state.font) return;
+    buildGlyphList();
+    layoutGrid();
+    renderGridWindow(true);
+  }, 120);
+});
+
+let scrollRAF = false;
+window.addEventListener('scroll', ()=>{
+  if (!state.font || scrollRAF) return;
+  scrollRAF = true;
+  requestAnimationFrame(()=>{ scrollRAF = false; renderGridWindow(false); });
+}, {passive:true});
+
+$('glyphgrid').addEventListener('click', e=>{
+  if (!state.font) return;
+  const rect = $('gridViewport').getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const {cols, cellW, cellH} = gridLayout;
+  const col = Math.floor(x / cellW), row = Math.floor(y / cellH);
+  const idx = row*cols + col;
+  if (!(col>=0 && col<cols && idx>=0 && idx<gridGlyphs.length)) return;
+  const it = gridGlyphs[idx];
+  if (it.blank){
+    if (state.clickCreate){ createSlotAt(it.u); }
+    else toast('U+'+it.hex.toUpperCase()+' is blank in this font \u2014 turn on CLICK-CREATE to add a slot');
+    return;
+  }
+  if (e.shiftKey){
+    const gi = gridGlyphs[idx].i;
+    if (selSet.has(gi)) selSet.delete(gi); else selSet.add(gi);
+    selVer++;
+    const q = ($('glyphSearch').value||'').trim();
+    const total = state.font.glyphs.length;
+    $('gridCount').textContent = (q? gridGlyphs.length+' / ':'') + total + ' glyphs' +
+      (selSet.size? ' \u00b7 '+selSet.size+' selected':'') + ' \u00b7 live';
+    gridDrawnKey = '';
+    renderGridWindow(true);
+    if (state.scope==='sel') scheduleRender();
+    pushHistory();
+  } else {
+    openInspector(idx);
+  }
+});
+
+$('inspClose').addEventListener('click', closeInspector);
+$('inspPrev').addEventListener('click', ()=>stepInspector(-1));
+$('inspNext').addEventListener('click', ()=>stepInspector(1));
+document.querySelector('.insp-backdrop').addEventListener('click', closeInspector);
+document.addEventListener('keydown', e=>{
+  if ($('inspector').hidden) return;
+  const tag = (e.target && e.target.tagName || '').toLowerCase();
+  if (tag==='input' || tag==='textarea') return;
+  if (state.editMode){
+    if (e.key==='Escape'){
+      e.preventDefault();
+      if (ed.selPts.size){ ed.selPts = new Set(); ed.sel = null; renderEditor(); }
+      else exitEdit();
+      return;
+    }
+    if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='a'){
+      e.preventDefault();
+      ed.selPts = new Set(editHandles(ed.cmds).map(h=>edKey(h.ci,h.key)));
+      renderEditor();
+      return;
+    }
+    if ((e.key==='Delete' || e.key==='Backspace') && ed.selPts.size){
+      e.preventDefault();
+      const n = removeSelected(ed.cmds, edSelArr());
+      ed.selPts = new Set(); ed.sel = null;
+      if (n) edMutated();
+      else toast('Contour start points can\u2019t be deleted');
+      if (n) pushHistory();
+      return;
+    }
+    const step = e.shiftKey ? 10 : 1;
+    const nud = {ArrowLeft:[-step,0], ArrowRight:[step,0], ArrowUp:[0,step], ArrowDown:[0,-step]}[e.key];
+    if (nud && ed.selPts.size){
+      e.preventDefault();
+      moveSelected(ed.cmds, edSelArr(), nud[0], nud[1]);
+      edMutated();
+    }
+    return;
+  }
+  if (e.key==='Escape') closeInspector();
+  else if (e.key==='ArrowLeft'){ e.preventDefault(); stepInspector(-1); }
+  else if (e.key==='ArrowRight'){ e.preventDefault(); stepInspector(1); }
+});
 
 /* toast */
 let toastTimer;

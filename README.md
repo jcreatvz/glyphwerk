@@ -65,7 +65,46 @@ Every time I wanted a fake-oblique, a stretched wide, or a wave-warped display c
 - Editable sample text
 - Size slider (40–220px)
 - **Scrub-drag**: hold and drag horizontally on the specimen to slew the slant angle in real time
-- Proof-sheet grid — every drawn glyph in the font rendered live at the current transform settings
+
+### Glyph browser
+- **Every glyph in the font** — the grid is virtualized (only visible cells render), so a 6,000-glyph CJK or symbol font scrolls as smoothly as a 100-glyph display face. Empty slots (space, unmapped) show as dashed advance boxes.
+- **Search / filter** — by character (`A`), glyph-name substring (`quote`), or unicode hex (`0041`, `U+0042`)
+- **Per-cell metadata** — codepoint and live advance width under each glyph
+- **Glyph inspector** — click any cell for a zoomed view with metric guides, a **ghost overlay** of the untouched source outline behind the transformed result, and a full readout: name, unicode, advance (source → transformed), left/right sidebearings, bounding box, contour count. Navigate with `←` `→`, close with `Esc`.
+
+### Per-glyph editing
+- **Override fields in the inspector** — set an individual glyph's advance width, nudge it (ΔX / ΔY), scale it (SX / SY %), or rotate it, independently of the global transforms. Overrides stack *under* the global pipeline (local edit first, global transforms on top) and bake into the export. Edited cells show a blue dot in the browser; `RESET` clears one glyph.
+- **Transform scope** — apply the global Transform / Warp / Shape sections to `ALL`, `A–Z`, `a–z`, `0–9`, or a hand-picked `SEL`ection (shift-click cells in the browser to build it). Out-of-scope glyphs pass through completely untouched — slant just the caps, outline just the digits.
+
+### SVG import (custom glyph artwork)
+- **Paste or drop an SVG into any glyph** — open a glyph in the inspector, then `PASTE SVG` (or `Ctrl+V`, or drop an `.svg` file onto the panel). The artwork becomes that glyph's outline: y-flipped into font space, scaled to a **fit height** (`CAP / X-H / EM`), sitting on the baseline with an automatic sidebearing.
+- **REPLACE or ADD** — swap the glyph's outline entirely, or layer the SVG's contours on top of what's there.
+- **Parser coverage** — full path data (`M L H V C S Q T A Z`, absolute + relative, implicit repeats), `rect`, `circle`, `ellipse`, `polygon`, `polyline`, nested groups, and `transform` attributes (translate/scale/rotate/matrix/skew). Arcs are converted to cubic béziers. Stroke-only elements and `defs`/masks are skipped — fills are what a font can hold.
+- **New glyph slots** — `+ GLYPH` in the browser header adds a slot for any character the font doesn't have (type the character or `U+hex`). Paste artwork into it and the export maps it in the cmap — type `★` and get your logo. Imports auto-set the slot's advance width.
+- Custom outlines become the glyph's *source*: global transforms, warps, scope, and per-glyph overrides all stack on top, and everything persists through project files, autosave, and undo.
+
+### Alignment in the advance
+- **L / C / R** buttons in the inspector set a glyph flush-left (LSB = 0), centered, or flush-right (RSB = 0) within its advance — written to the ΔX override, so it's undoable, saved in projects, and cleared by RESET.
+- **Align all in scope** (Spacing section) applies the same to every glyph the current Transform scope covers, in one undo step — center all caps, flush all digits.
+
+### Unicode block view
+- **GLYPHS / UNICODE** toggle in the browser header. Unicode mode shows **every codepoint slot in a block** — pick from the block list (Basic Latin through Dingbats and PUA) or type a custom hex range (`2600-27BF`, capped at 4,096 slots per view).
+- Mapped codepoints render normally; your virtual slots show as theirs; **blank means blank** — unassigned slots are empty cells with just their hex label.
+- **CLICK-CREATE toggle** (off by default): when on, clicking a blank slot creates a glyph slot right there and opens the inspector ready for an SVG paste. When off, blanks just report themselves — no accidental slots.
+
+### Node editor (point-level vector editing)
+- **EDIT POINTS** in the inspector opens any glyph in a full vector editor: on-curve anchors as squares, control handles as circles with handle lines, metric guides, and advance-width markers.
+- **Drag** any point. Anchors carry their attached control handles with them, and coincident contour start/end points move together so closed contours never tear open.
+- **Multi-select** — Shift+click toggles points in and out of the selection, **Shift+drag** on empty space draws a marquee, **Ctrl/Cmd+A** selects everything. Dragging any selected point moves the whole selection (overlapping anchor/handle selections are deduplicated so nothing moves twice); arrows nudge the group; **Del** removes them all. **Esc** clears the selection first, exits the editor on the second press. Plain drag still pans.
+- **Double-click a segment** to insert a point (curves are split exactly with de Casteljau — the shape doesn't change until you move something). **Del** removes: an anchor deletes its segment; a control handle demotes its curve to a straight line. Contour start points are protected.
+- **Toolbar** — `FIT / ＋ / － / ALL / NONE` buttons for view fitting, zooming, and selection without keyboard shortcuts; hovering a point shows a grab cursor, and anchors take priority over overlapping handles when clicking.
+- **Arrows** nudge the selected point (Shift = ×10), with **snapping** to baseline / x-height / cap / ascender / descender and the advance edges while dragging. **Wheel** zooms at the cursor; drag empty space to pan.
+- Edits happen in **source space** — global transforms, warps, and scope still apply on top — and ride the same override system as SVG imports: undo/redo covers every drag, and projects/autosave persist the edited outlines. Opening and closing the editor without touching anything leaves the glyph unmarked.
+
+### Projects, undo, autosave
+- **Undo / redo** — every committed change (slider release, toggle, override edit, selection) is a history step. `Ctrl/Cmd+Z`, `Ctrl+Shift+Z` / `Ctrl+Y`, or the header buttons. 60 steps.
+- **Project files** — save all settings, per-glyph overrides, selection, names, and metadata as a `.gwproj.json`; load it back any time. The file references the font rather than embedding it — reload the font file yourself.
+- **Autosave** — sessions persist in the browser per font signature; reload the same font and your edits restore automatically (`Reset all` discards).
 
 ### Export
 - Downloads a fresh `.otf` (CFF outlines)
@@ -151,15 +190,15 @@ Every numeric readout is click-editable — tap the value, type a number, hit en
 - **Shape/stroke output is flattened** — when offset or stroke is active, exported outlines are fine line segments rather than beziers. Invisible at display sizes; if you need curve-fitted output, run the result through a font editor's "simplify" pass.
 - **Knockout doesn't export to font** — it's relational (depends on letter neighbors), so it ships as SVG wordmark artwork instead. This is a property of font formats, not a missing feature.
 - **Kerning tables aren't rewritten** — the source kerning survives, but the transform can shift optimal kerns. For display use this is usually fine; for text sizes, re-kern.
-- **No undo history** — sliders reset per-section (Transform reset / Warp reset / Reset all), but there's no timeline. Save presets by URL-hashing the state if you want persistence (not currently implemented; PR-worthy).
+- **Project files don't embed the font** — a `.gwproj.json` stores your edits, not the font binary, so keep the font file alongside it. (Deliberate: avoids baking licensed font data into shareable files.)
 
 ---
 
 ## Roadmap ideas
 
+
 - URL-hash persistence of the current transform (share a link that reproduces a warp)
 - Preset library (Oblique 12°, Extended 130%, etc.)
-- Per-unicode-range selective transforms (e.g., only uppercase, only Latin-1)
 - Proper italic metadata write on export (slant angle, fsSelection bits)
 - WOFF export via a compression layer
 - Curve re-fitting after boolean geometry (bezier output instead of segments)
