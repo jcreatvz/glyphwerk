@@ -586,6 +586,7 @@ select.text-input{cursor:pointer;font-family:var(--mono);font-size:11px;letter-s
       <button class="btn" id="etAll" title="Select all points (Ctrl+A)">ALL</button>
       <button class="btn" id="etNone" title="Clear selection (Esc)">NONE</button>
       <span class="et-sep"></span>
+      <button class="btn" id="etCopy" title="Copy this glyph's outline as SVG (paste into another glyph or a design tool)">COPY</button>
       <button class="btn" id="etSvg" title="Export this construction view (outline, handles, points, guides) as layered SVG">SVG ⤓</button>
     </div>
     <div class="hint" id="editHint" style="padding:0 18px 14px" hidden><b>drag</b> points · <b>double-click</b> a segment to add a point · <b>Del</b> removes (anchor→gone, handle→line) · <b>arrows</b> nudge (Shift = ×10) · <b>wheel</b> zoom · drag empty space to pan · <b>Esc / DONE</b> exits</div>
@@ -1578,6 +1579,7 @@ function exportFont(){
 
   const outGlyphs = [];
   const totalN = src.glyphs.length + virtualGlyphs.length;
+  const built = [];
   for (let i=0; i<totalN; i++){
     const g = glyphAt(i);
     let path;
@@ -1588,14 +1590,34 @@ function exportFont(){
     } else {
       path = translatePathX(res.path, sh);
     }
+    built.push({i, g, path, adv: transformedAdvance(g, i)});
+  }
+  /* dedupe unicode claims: one glyph per codepoint in the cmap. A glyph WITH
+     an outline beats an empty one; virtual slots beat source glyphs on ties
+     (the user's custom art is the intent). Losers keep outlines, lose mapping. */
+  const claim = new Map();
+  const score = b => (b.path.commands.length ? 2 : 0) + (b.i >= vBase() ? 1 : 0);
+  for (const b of built){
+    const us = b.g.unicodes && b.g.unicodes.length ? b.g.unicodes : (b.g.unicode!=null ? [b.g.unicode] : []);
+    for (const u of us){
+      const cur = claim.get(u);
+      if (!cur || score(b) > score(cur)) claim.set(u, b);
+    }
+  }
+  let stripped = 0;
+  for (const b of built){
+    const us = b.g.unicodes && b.g.unicodes.length ? b.g.unicodes : (b.g.unicode!=null ? [b.g.unicode] : []);
+    const keep = us.filter(u => claim.get(u) === b);
+    if (keep.length !== us.length) stripped++;
     outGlyphs.push(new opentype.Glyph({
-      name: g.name || ('gid'+i),
-      unicode: g.unicode,
-      unicodes: g.unicodes ? g.unicodes.slice() : undefined,
-      advanceWidth: transformedAdvance(g, i),
-      path,
+      name: b.g.name || ('gid'+b.i),
+      unicode: keep.length ? keep[0] : undefined,
+      unicodes: keep.length ? keep : undefined,
+      advanceWidth: b.adv,
+      path: b.path,
     }));
   }
+  if (stripped) toast(stripped+' duplicate codepoint claim'+(stripped===1?'':'s')+' resolved \u2014 outlined glyphs kept the mapping');
 
   const out = new opentype.Font({
     familyName: fam,
@@ -2046,13 +2068,76 @@ function alignScope(mode){
   toast('Aligned '+n+' glyph'+(n===1?'':'s')+' '+mode.toUpperCase()+' in advance');
 }
 
+/* ---------------- glyph clipboard (copy ↔ paste between glyphs) ----------------
+   The copied SVG is real art (pastes into Illustrator/Figma upright) AND carries
+   a data-gw passport so pasting into another glyph restores exact font-unit
+   coordinates — and, into an EMPTY slot, the source's overrides too. */
+function glyphClipboardSVG(gi){
+  const g = glyphAt(gi);
+  const cmds = (state.editMode && ed.gi===gi) ? ed.cmds
+             : serializeCommands(sourcePathOf(g, gi));
+  if (!cmds || !cmds.length) return null;
+  const bb = pathFromCommands(cmds).getBoundingBox();
+  const fx = x => x - bb.x1, fy = y => bb.y2 - y;
+  const N = v => Math.round(v*100)/100;
+  let d = '';
+  for (const c of cmds){
+    switch(c.type){
+      case 'M': d += 'M'+N(fx(c.x))+' '+N(fy(c.y)); break;
+      case 'L': d += 'L'+N(fx(c.x))+' '+N(fy(c.y)); break;
+      case 'Q': d += 'Q'+N(fx(c.x1))+' '+N(fy(c.y1))+' '+N(fx(c.x))+' '+N(fy(c.y)); break;
+      case 'C': d += 'C'+N(fx(c.x1))+' '+N(fy(c.y1))+' '+N(fx(c.x2))+' '+N(fy(c.y2))+' '+N(fx(c.x))+' '+N(fy(c.y)); break;
+      case 'Z': d += 'Z'; break;
+    }
+  }
+  const ov = ovOf(gi) || {};
+  const payload = {v:1, upem: state.metrics.upem, x1: bb.x1, y2: bb.y2,
+    overrides: {adv: ov.adv ?? null, dx: ov.dx ?? null, dy: ov.dy ?? null,
+                sx: ov.sx ?? null, sy: ov.sy ?? null, rot: ov.rot ?? null}};
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+N(bb.x2-bb.x1)+' '+N(bb.y2-bb.y1)+'"'+
+         ' data-gw=\''+JSON.stringify(payload)+'\'>'+
+         '<path d="'+d+'" fill="#121316" fill-rule="nonzero"/></svg>';
+}
+async function copyGlyphSVG(){
+  if (state.inspIdx<0) return;
+  const gi = gridGlyphs[state.inspIdx].i;
+  const svg = glyphClipboardSVG(gi);
+  if (!svg){ toast('Empty glyph \u2014 nothing to copy'); return; }
+  try{
+    await navigator.clipboard.writeText(svg);
+    toast('Glyph SVG copied \u2014 paste into another glyph (or a design tool)');
+  }catch(e){
+    toast('Clipboard blocked by the browser \u2014 try Ctrl/Cmd+C after selecting, or a secure (https) context');
+  }
+}
+function readGwPassport(svgText){
+  const m = svgText.match(/data-gw='([^']+)'/) || svgText.match(/data-gw="([^"]+)"/);
+  if (!m) return null;
+  try{ const p = JSON.parse(m[1].replace(/&quot;/g,'"').replace(/&apos;/g,"'"));
+       return (p && p.v===1 && p.upem) ? p : null; }
+  catch(e){ return null; }
+}
+
 function importSvgIntoGlyph(gi, svgText){
   let cmds;
   try{ cmds = parseSvg(svgText); }
   catch(err){ toast('SVG import failed: '+err.message); return false; }
   const wasEmpty = (()=>{ const g=glyphAt(gi); const ov=ovOf(gi);
     return !((ov&&ov.path&&ov.path.length) || (g.path&&g.path.commands.length)); })();
-  const fitted = fitSvgCmds(cmds, state.svgFit);
+  const gw = readGwPassport(svgText);
+  let fitted;
+  if (gw){
+    /* Glyphwerk-copied glyph: bypass fitting, restore exact font-unit
+       coordinates (scaled if the fonts' UPMs differ) */
+    const k = state.metrics.upem / gw.upem;
+    for (const c of cmds){
+      for (const f of ['x','x1','x2']) if (c[f]!==undefined) c[f] = Math.round((c[f] + gw.x1)*k*10)/10;
+      for (const f of ['y','y1','y2']) if (c[f]!==undefined) c[f] = Math.round((gw.y2 - c[f])*k*10)/10;
+    }
+    fitted = {cmds, width: null};
+  } else {
+    fitted = fitSvgCmds(cmds, state.svgFit);
+  }
   const ov = state.overrides[gi] = state.overrides[gi] || {};
   if (state.svgMode==='add'){
     const base = (ov.path && ov.path.length) ? ov.path : serializeCommands(glyphAt(gi).path || new opentype.Path());
@@ -2060,7 +2145,18 @@ function importSvgIntoGlyph(gi, svgText){
   } else {
     ov.path = fitted.cmds;
   }
-  if (wasEmpty && ov.adv==null) ov.adv = fitted.width;
+  if (gw && wasEmpty && gw.overrides){
+    /* empty destination inherits the source's attributes wholesale */
+    const k = state.metrics.upem / gw.upem;
+    const o = gw.overrides;
+    if (o.adv!=null) ov.adv = Math.round(o.adv*k);
+    if (o.dx!=null)  ov.dx  = Math.round(o.dx*k);
+    if (o.dy!=null)  ov.dy  = Math.round(o.dy*k);
+    if (o.sx!=null)  ov.sx  = o.sx;
+    if (o.sy!=null)  ov.sy  = o.sy;
+    if (o.rot!=null) ov.rot = o.rot;
+  }
+  if (wasEmpty && ov.adv==null && fitted.width!=null) ov.adv = fitted.width;
   gridDrawnKey = '';
   if (state.inspIdx>=0) renderInspector();
   scheduleRender();
@@ -2106,6 +2202,15 @@ function addVirtualGlyph(input){
 }
 function createSlotAt(u){
   const chS = String.fromCodePoint(u);
+  /* the font may already map this codepoint — a second claim would corrupt
+     the export's cmap (empty virtual steals the slot, real glyph orphaned) */
+  const existing = state.font.charToGlyphIndex ? state.font.charToGlyphIndex(chS) : 0;
+  if (existing > 0){
+    const li = gridGlyphs.findIndex(x=>x.i===existing);
+    if (li>=0) openInspector(li);
+    toast('U+'+u.toString(16).toUpperCase().padStart(4,'0')+' already exists in this font \u2014 opened it; paste an SVG to replace its outline');
+    return;
+  }
   virtualGlyphs.push(makeVirtualGlyph(u, Math.round(state.metrics.upem*0.5)));
   buildGlyphList(); layoutGrid(); renderGridWindow(true);
   const li = gridGlyphs.findIndex(x=>x.i===vBase()+virtualGlyphs.length-1 || (x.u===u && x.virtual));
@@ -3041,6 +3146,7 @@ $('etZoomOut').addEventListener('click', ()=>{ if(insLive()) edZoom(1/1.3); });
 $('etUndo').addEventListener('click', undo);
 $('etRedo').addEventListener('click', redo);
 $('etSvg').addEventListener('click', exportConstructionSVG);
+$('etCopy').addEventListener('click', copyGlyphSVG);
 $('etAll').addEventListener('click', ()=>{
   if(!state.editMode) return;
   ed.selPts = new Set(editHandles(ed.cmds).map(h=>edKey(h.ci,h.key)));

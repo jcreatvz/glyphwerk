@@ -99,6 +99,13 @@ Every time I wanted a fake-oblique, a stretched wide, or a wave-warped display c
 ### Spacing by hand
 - In Edit Points, the two dashed advance lines are **draggable spacing handles**: drag the right line to set the advance width live, drag the left line to grow or shrink the left sidebearing (the advance follows and the glyph holds still on screen). Both snap to the ink edges — one gesture for LSB = 0 or RSB = 0 — show live LSB/RSB in the HUD, sync the ADV/ΔX fields, and commit as one undo step. Advance can't go below 0 (font format limit); overlap still comes from tracking.
 
+### Copy a glyph, paste it anywhere
+- **COPY** on the inspector toolbar puts the glyph's outline on the clipboard as real SVG — paste it straight into Illustrator or Figma, or paste it into another glyph (Ctrl/Cmd+V in the inspector). Glyph-to-glyph pastes carry a passport: coordinates land **exactly** where they were (no re-fitting), scaled automatically if the destination font's UPM differs. Pasting into an **empty slot** also brings the source's ADV/ΔX/ΔY/scale/rotation along; pasting into an occupied glyph transplants the outline only and respects your REPLACE/ADD mode. Foreign SVGs without the passport still auto-fit as before.
+
+### Safe custom-glyph mapping
+- Adding a slot at a codepoint the font **already maps** now opens the existing glyph instead of creating a duplicate (paste an SVG there to replace its outline). Duplicate claims were silently corrupting exports: an empty slot could steal a real character's cmap entry, leaving blank glyphs — the kind of font macOS Font Book refuses to show.
+- Exports also **dedupe codepoint claims** as a safety net for older projects: one glyph per codepoint, outlined glyphs beat empty ones, your custom art beats the source on ties. A toast reports any resolved duplicates.
+
 ### Metadata that behaves
 - Loading a font now **prefills the Metadata fields from its own name table** (designer, foundry, copyright, version, URL) — JC Lutao defaults only fill true blanks. What the fields show is what exports.
 - Exports carry the version in **both** places macOS looks: the name table *and* `head.fontRevision` (opentype.js pins the latter at 1.0; Glyphwerk byte-patches it and repairs the font checksums). Bump the version before re-installing to beat the macOS font cache.
