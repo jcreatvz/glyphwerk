@@ -818,6 +818,20 @@ function scopeIncludes(g, i){
   return true;
 }
 function ovOf(i){ return state.overrides[i] || null; }
+/* pull designer/foundry/copyright/version/url out of the uploaded font's
+   name table; JC Lutao defaults only fill the true blanks */
+function prefillMetadata(font){
+  const nm = (font && font.names) || {};
+  const pick = k => { const e = nm[k]; if (!e) return '';
+    return (e.en || Object.values(e)[0] || '').toString().trim(); };
+  $('metaDesigner').value  = pick('designer')     || 'JC Lutao';
+  $('metaFoundry').value   = pick('manufacturer') || 'JC Lutao';
+  $('metaCopyright').value = pick('copyright')    || '© 2026 JC Lutao';
+  $('metaURL').value       = pick('designerURL') || pick('manufacturerURL') || '';
+  const vm = pick('version').match(/([0-9]+(?:\.[0-9]+)?)/);
+  $('metaVersion').value   = vm ? vm[1] : '1.000';
+}
+
 function setOverride(i, field, val){
   const ov = state.overrides[i] = state.overrides[i] || {};
   if (val===null || val===undefined || val==='' || isNaN(val)) delete ov[field];
@@ -1495,7 +1509,7 @@ function renderInspector(){
   /* canvas: SHARED view mapping (same zoom/pan as Edit Points) */
   const canvas = $('inspCanvas');
   const cssW = canvas.parentElement.clientWidth || 520;
-  const cssH = 300;
+  const cssH = inspCanvasH();
   const ctx = setupCanvas(canvas, cssW, cssH);
   ctx.clearRect(0,0,cssW,cssH);
 
@@ -1611,12 +1625,50 @@ function exportFont(){
   for (const [key, val] of md) if (val) out.names[key] = {en: val};
 
   try{
-    out.download(ps + '.otf');
+    const patched = patchFontRevision(out.toArrayBuffer(), parseFloat(ver) || 1);
+    saveBinary(patched, ps + '.otf');
     toast('Exported ' + ps + '.otf — every glyph transformed');
   }catch(err){
     console.error(err);
     toast('Export failed: ' + err.message);
   }
+}
+
+/* opentype.js hardcodes head.fontRevision = 1; patch the real version into
+   the binary and repair both checksums (head table + checkSumAdjustment) */
+function patchFontRevision(ab, version){
+  const dv = new DataView(ab);
+  const numTables = dv.getUint16(4);
+  let headOff = -1, headLen = 0, dirEntry = -1;
+  for (let i=0; i<numTables; i++){
+    const e = 12 + i*16;
+    const tag = String.fromCharCode(dv.getUint8(e),dv.getUint8(e+1),dv.getUint8(e+2),dv.getUint8(e+3));
+    if (tag==='head'){ dirEntry = e; headOff = dv.getUint32(e+8); headLen = dv.getUint32(e+12); break; }
+  }
+  if (headOff < 0) return ab;
+  dv.setInt32(headOff+4, Math.round(version*65536));   /* fontRevision, Fixed 16.16 */
+  dv.setUint32(headOff+8, 0);                          /* zero checkSumAdjustment */
+  const sum32 = (off, len)=>{ let s=0;
+    for (let p=off; p<off+len; p+=4) s = (s + dv.getUint32(Math.min(p, ab.byteLength-4))) >>> 0;
+    return s>>>0; };
+  /* head table checksum over padded length */
+  const padded = (headLen+3) & ~3;
+  dv.setUint32(dirEntry+4, sum32(headOff, padded));
+  /* whole-file checksum -> checkSumAdjustment */
+  let total = 0;
+  for (let p=0; p+4<=ab.byteLength; p+=4) total = (total + dv.getUint32(p)) >>> 0;
+  const rem = ab.byteLength & 3;
+  if (rem){ let last=0; for (let k=0;k<4;k++) last = (last<<8) | (k<rem ? dv.getUint8(ab.byteLength-rem+k) : 0); total = (total + (last>>>0)) >>> 0; }
+  dv.setUint32(headOff+8, (0xB1B0AFBA - total) >>> 0);
+  return ab;
+}
+function saveBinary(ab, name){
+  const blob = new Blob([ab], {type:'font/otf'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 /* ---------------- wordmark SVG export ---------------- */
@@ -2318,7 +2370,7 @@ function drawMetricGuides(ctx, cssW, cssH, adv){
 function fitViewFor(gi){
   const canvas = $('inspCanvas');
   const cssW = canvas.parentElement.clientWidth || 900;
-  const cssH = state.editMode ? 480 : 300;
+  const cssH = inspCanvasH();
   const m = state.metrics;
   const g = glyphAt(gi);
   const adv = transformedAdvance(g, gi);
@@ -2443,9 +2495,14 @@ function eOY(){ const o=ovOf(ed.gi); return (o&&o.dy)||0; }
 const eSX = fx => edSX(fx + eOX());
 const eSY = fy => edSY(fy + eOY());
 
+/* both panels share one responsive canvas height */
+function inspCanvasH(){
+  const w = $('inspCanvas').parentElement.clientWidth || 900;
+  return w < 560 ? 360 : 480;
+}
 function renderEditor(){
   const canvas = $('inspCanvas');
-  const cssW = canvas.parentElement.clientWidth || 900, cssH = 480;
+  const cssW = canvas.parentElement.clientWidth || 900, cssH = inspCanvasH();
   const ctx = setupCanvas(canvas, cssW, cssH);
   ctx.clearRect(0,0,cssW,cssH);
   const z = ed.view.z;
@@ -2533,6 +2590,11 @@ function renderEditor(){
   /* HUD */
   ctx.fillStyle = '#75736B'; ctx.font = '500 9px "Azeret Mono", monospace';
   let hud = Math.round(z*100)+'% \u00b7 ADV '+edAdv();
+  if (ed.drag && ed.drag.mode==='adv' && ed.drag.bb){
+    const lsb = Math.round(ed.drag.bb.x1 + eOX());
+    const rsb = Math.round(edAdv() - (ed.drag.bb.x2 + eOX()));
+    hud += ' \u00b7 LSB '+lsb+' \u00b7 RSB '+rsb;
+  }
   if (ed.flash && Date.now()<ed.flash.until) hud = ed.flash.t+'  '+hud;
   if (ed.selPts.size>1){
     hud += ' \u00b7 '+ed.selPts.size+' selected';
@@ -2559,6 +2621,16 @@ function edHitPoint(sx, sy){
   }
   return best;
 }
+function eAdvNow(gi, g){ const o=ovOf(gi); return (o && o.adv!=null) ? o.adv : g.advanceWidth; }
+/* the two dashed advance lines are draggable spacing handles in edit mode */
+function edHitAdvLine(sx){
+  const xL = edSX(0), xR = edSX(edAdv());
+  const dL = Math.abs(sx-xL), dR = Math.abs(sx-xR);
+  if (dR<=6 && dR<=dL) return 'R';
+  if (dL<=6) return 'L';
+  return null;
+}
+
 /* transform-box handles float 12px OUTSIDE the bbox (screen space) so they
    never cover the selected points themselves — Illustrator-style */
 function edBoxHandles(sb){
@@ -2762,6 +2834,7 @@ function loadFile(file){
 
     if (!$('nameFamily').value) $('nameFamily').value = fam;
     if (!$('nameStyle').value)  $('nameStyle').value  = sty + ' GW';
+    prefillMetadata(font);
     updatePSPreview();
 
     $('emptyState').hidden = true;
@@ -2953,7 +3026,7 @@ $('addGlyphBtn').addEventListener('click', ()=>{
 $('editBtn').addEventListener('click', ()=>{ state.editMode ? exitEdit() : enterEdit(); });
 function edZoom(f){
   const canvas = $('inspCanvas');
-  const cx = (canvas.parentElement.clientWidth||900)/2, cyv = 240;
+  const cx = (canvas.parentElement.clientWidth||900)/2, cyv = inspCanvasH()/2;
   const fx = edFX(cx), fy = edFY(cyv);
   ed.view.z = Math.min(4, Math.max(0.02, ed.view.z*f));
   ed.view.ox = cx - fx*ed.view.z;
@@ -3012,6 +3085,15 @@ $('etNone').addEventListener('click', ()=>{
                  hx0:hd.fx, hy0:hd.fy,
                  t0x:edFX(sx)-eOX(), t0y:edFY(sy)-eOY(),
                  orig:cloneCmds(), moved:false};
+      c.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    const advSide = edHitPoint(sx, sy) ? null : edHitAdvLine(sx);
+    if (advSide){
+      const bb = ed.cmds.length ? pathFromCommands(ed.cmds).getBoundingBox() : null;
+      ed.drag = {mode:'adv', side:advSide, adv0:edAdv(), dx0:eOX(),
+                 startFx:edFX(sx), startOx:ed.view.ox, bb, moved:false};
       c.setPointerCapture(e.pointerId);
       return;
     }
@@ -3095,6 +3177,39 @@ $('etNone').addEventListener('click', ()=>{
       renderEditor();
       return;
     }
+    if (ed.drag && ed.drag.mode==='adv'){
+      const d0 = ed.drag;
+      const gi = ed.gi, g0 = glyphAt(gi);
+      let d = Math.round(edFX(sx) - d0.startFx);
+      const snapT = 6/ed.view.z;
+      if (d0.side==='R'){
+        let newAdv = Math.max(0, d0.adv0 + d);
+        if (d0.bb){                                 /* snap to ink right edge: RSB = 0 */
+          const inkR = d0.bb.x2 + d0.dx0;
+          if (Math.abs(newAdv - inkR) <= snapT) newAdv = Math.round(inkR);
+        }
+        setOverride(gi, 'adv', newAdv===g0.advanceWidth ? null : newAdv);
+      } else {
+        /* L: grow/shrink LSB — dx and adv move together, view pans to hold the glyph still */
+        let nd = -d;
+        if (d0.adv0 + nd < 0) nd = -d0.adv0;
+        let newDx = d0.dx0 + nd;
+        if (d0.bb){                                 /* snap to ink left edge: LSB = 0 */
+          const lsb = d0.bb.x1 + newDx;
+          if (Math.abs(lsb) <= snapT){ newDx = -Math.round(d0.bb.x1); nd = newDx - d0.dx0; }
+        }
+        const newAdv = Math.max(0, d0.adv0 + nd);
+        setOverride(gi, 'dx', newDx===0 ? null : newDx);
+        setOverride(gi, 'adv', newAdv===g0.advanceWidth ? null : newAdv);
+        ed.view.ox = d0.startOx - (newDx - d0.dx0)*ed.view.z;
+      }
+      $('ov-adv').value = eAdvNow(gi, g0);
+      $('ov-dx').value = eOX() || '';
+      glyphCache = new Map(); cacheKey = '';
+      d0.moved = true;
+      renderEditor();
+      return;
+    }
     if (ed.drag && ed.drag.mode==='scale'){
       const d = ed.drag;
       const tfx = edFX(sx)-eOX(), tfy = edFY(sy)-eOY();
@@ -3115,7 +3230,9 @@ $('etNone').addEventListener('click', ()=>{
       return;
     }
     /* idle hover */
-    c.style.cursor = (edHitPoint(sx, sy) || edHitBoxHandle(sx,sy)) ? 'move' : 'crosshair';
+    if (edHitPoint(sx, sy) || edHitBoxHandle(sx,sy)) c.style.cursor = 'move';
+    else if (edHitAdvLine(sx)) c.style.cursor = 'col-resize';
+    else c.style.cursor = 'crosshair';
   });
 
   const endDrag = ()=>{
@@ -3137,7 +3254,11 @@ $('etNone').addEventListener('click', ()=>{
         if (ed.drag.wasIn) ed.selPts.delete(ed.drag.key);   // was in → toggled out; wasn't → stays in
         renderEditor();
       }
-      if (ed.drag.moved){ gridDrawnKey=''; pushHistory(); scheduleRender(); }
+      if (ed.drag.moved){
+        gridDrawnKey='';
+        if (ed.drag.mode==='adv'){ glyphCache = new Map(); cacheKey=''; }
+        pushHistory(); scheduleRender();
+      }
     }
     ed.drag = null; panning = null;
   };

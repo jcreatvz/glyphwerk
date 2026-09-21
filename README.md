@@ -85,7 +85,7 @@ Every time I wanted a fake-oblique, a stretched wide, or a wave-warped display c
 
 ### Browser & inspector view
 - Oversized glyphs (warps, offsets, big scales, wild edits) **shrink proportionally to fit their cell** in the glyph browser instead of overflowing into neighbours; normal glyphs keep the shared scale for honest size comparison.
-- The inspector's view canvas and the Edit Points canvas now share **one view**: pan by dragging, zoom with the wheel or the toolbar `＋/－`, `FIT` re-frames — in *both* panels, with your zoom carried across entering/exiting edit mode. Switching glyphs re-fits. **Double-click the glyph in the view panel to jump straight into Edit Points.**
+- The inspector's view canvas and the Edit Points canvas are the **same size** (responsive: 480px, 360px on narrow layouts) and share **one view**: pan by dragging, zoom with the wheel or the toolbar `＋/－`, `FIT` re-frames — in *both* panels, with your zoom carried across entering/exiting edit mode. Switching glyphs re-fits. **Double-click the glyph in the view panel to jump straight into Edit Points.**
 
 ### Alignment in the advance
 - **L / C / R** buttons in the inspector set a glyph flush-left (LSB = 0), centered, or flush-right (RSB = 0) within its advance — written to the ΔX override, so it's undoable, saved in projects, and cleared by RESET.
@@ -95,6 +95,13 @@ Every time I wanted a fake-oblique, a stretched wide, or a wave-warped display c
 - **GLYPHS / UNICODE** toggle in the browser header. Unicode mode shows **every codepoint slot in a block** — pick from the block list (Basic Latin through Dingbats and PUA) or type a custom hex range (`2600-27BF`, capped at 4,096 slots per view).
 - Mapped codepoints render normally; your virtual slots show as theirs; **blank means blank** — unassigned slots are empty cells with just their hex label.
 - **CLICK-CREATE toggle** (off by default): when on, clicking a blank slot creates a glyph slot right there and opens the inspector ready for an SVG paste. When off, blanks just report themselves — no accidental slots.
+
+### Spacing by hand
+- In Edit Points, the two dashed advance lines are **draggable spacing handles**: drag the right line to set the advance width live, drag the left line to grow or shrink the left sidebearing (the advance follows and the glyph holds still on screen). Both snap to the ink edges — one gesture for LSB = 0 or RSB = 0 — show live LSB/RSB in the HUD, sync the ADV/ΔX fields, and commit as one undo step. Advance can't go below 0 (font format limit); overlap still comes from tracking.
+
+### Metadata that behaves
+- Loading a font now **prefills the Metadata fields from its own name table** (designer, foundry, copyright, version, URL) — JC Lutao defaults only fill true blanks. What the fields show is what exports.
+- Exports carry the version in **both** places macOS looks: the name table *and* `head.fontRevision` (opentype.js pins the latter at 1.0; Glyphwerk byte-patches it and repairs the font checksums). Bump the version before re-installing to beat the macOS font cache.
 
 ### Node editor (point-level vector editing)
 - **EDIT POINTS** in the inspector opens any glyph in a full vector editor: on-curve anchors as squares, control handles as circles with handle lines, metric guides, and advance-width markers.
